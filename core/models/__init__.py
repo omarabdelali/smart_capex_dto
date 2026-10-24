@@ -12,6 +12,7 @@ from .features import (
     SpatialFeatures,
     ANPFeatures,
     ClusterFeatures,
+    KPIFeatures,
 )
 from .kpi import PreLaunchKPI, MAOSMonthlyKPI
 
@@ -24,6 +25,7 @@ __all__ = [
     'SpatialFeatures',
     'ANPFeatures',
     'ClusterFeatures',
+    'KPIFeatures',
     'PreLaunchKPI',
     'MAOSMonthlyKPI',
 ]

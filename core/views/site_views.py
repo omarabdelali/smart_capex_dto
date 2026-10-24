@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Count, Q
 from core.models import Site
-from core.serializers import SiteSerializer, SiteGeoJSONSerializer
+from core.serializers import SiteSerializer, SiteGeoJSONSerializer, SiteWithFeaturesSerializer
 
 
 class SiteViewSet(viewsets.ReadOnlyModelViewSet):
@@ -152,3 +152,61 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
             'interior_sites': interior_sites,
             'clusters': clusters,
         })
+    
+    @action(detail=True, methods=['get'])
+    def features(self, request, site_id=None):
+        """
+        Return detailed features for a specific site.
+        
+        GET /api/sites/{site_id}/features/
+        
+        Returns:
+            {
+                "site_id": ...,
+                "site_name": ...,
+                "latitude": ...,
+                "longitude": ...,
+                "cluster_id": ...,
+                "is_cluster_edge": ...,
+                "geometric": {
+                    "z_antenna_m": ...,
+                    "terrain_slope_deg": ...,
+                    ...
+                },
+                "clutter": {
+                    "dominant_clutter": ...,
+                    "clutter_entropy_2km": ...,
+                    ...
+                },
+                "spatial": {
+                    "dist_nearest_site_m": ...,
+                    "n_sites_1km": ...,
+                    ...
+                },
+                "anp": {
+                    "n_neighbors_0_30": ...,
+                    "edge_score": ...,
+                    "angular_bins": [0, 2, 3, ...],
+                    ...
+                },
+                "neighbor_coords": [
+                    {"site_id": ..., "latitude": ..., "longitude": ..., "distance_m": ...},
+                    ...
+                ]
+            }
+        """
+        try:
+            site = Site.objects.select_related(
+                'geometric_features',
+                'clutter_features',
+                'spatial_features',
+                'anp_features'
+            ).get(site_id=site_id)
+        except Site.DoesNotExist:
+            return Response(
+                {'error': f'Site {site_id} not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = SiteWithFeaturesSerializer(site)
+        return Response(serializer.data)

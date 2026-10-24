@@ -235,6 +235,58 @@ class ANPFeatures(BaseModel):
         return f"ANP: {self.site.site_name} (edge={self.edge_score:.2f})"
 
 
+class KPIFeatures(BaseModel):
+    """
+    Pre-launch KPI features (Section 7: 12 features).
+    Network performance metrics before site launch.
+    """
+    site = models.OneToOneField(Site, on_delete=models.CASCADE, related_name='kpi_features')
+    
+    # 7.1 coverage_ratio_pre (0-1)
+    coverage_ratio_pre = models.FloatField(default=0, help_text="Coverage ratio before launch (0-1)")
+    
+    # 7.2 coverage_gap_pre (0-1)
+    coverage_gap_pre = models.FloatField(default=0, help_text="Coverage gap before launch (0-1)")
+    
+    # 7.3 avg_prb_pre (0-100%)
+    avg_prb_pre = models.FloatField(default=0, help_text="Average PRB utilization (0-100%)")
+    
+    # 7.4 avg_rrc_pre (0-800 users)
+    avg_rrc_pre = models.FloatField(default=0, help_text="Average connected users (0-800)")
+    
+    # 7.5 avg_throughput_pre (0-80 Mbps)
+    avg_throughput_pre = models.FloatField(default=0, help_text="Average user throughput Mbps (0-80)")
+    
+    # 7.6 avg_latency_pre (0-95 ms)
+    avg_latency_pre = models.FloatField(default=0, help_text="Average P95 latency ms (0-95)")
+    
+    # 7.7 dl_traffic_pre_gb_day (0-800 GB/day)
+    dl_traffic_pre_gb_day = models.FloatField(default=0, help_text="Daily downlink traffic GB/day (0-800)")
+    
+    # 7.8 traffic_density_mbb_pre (0-1000 GB/day/km²)
+    traffic_density_mbb_pre = models.FloatField(default=0, help_text="Mobile broadband traffic density (0-1000)")
+    
+    # 7.9 traffic_density_fwa_pre (0-1000 GB/day/km²)
+    traffic_density_fwa_pre = models.FloatField(default=0, help_text="Fixed wireless traffic density (0-1000)")
+    
+    # 7.10 traffic_density_box_pre (0-1000 GB/day/km²)
+    traffic_density_box_pre = models.FloatField(default=0, help_text="FDD Boxies traffic density (0-1000)")
+    
+    # 7.11 traffic_ratio_pre (0-10)
+    traffic_ratio_pre = models.FloatField(default=0, help_text="Demand to capacity ratio (0-10)")
+    
+    # 7.12 gap_score_pre (0-10)
+    gap_score_pre = models.FloatField(default=0, help_text="Combined gap metric (0-10)")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'kpi_features'
+    
+    def __str__(self):
+        return f"KPI: {self.site.site_name} (gap={self.gap_score_pre:.2f})"
+
+
 class ClusterFeatures(BaseModel):
     """
     Cluster context features (Section 8: 6 features).

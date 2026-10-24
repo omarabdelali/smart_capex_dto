@@ -1,301 +1,319 @@
 """
-MAOS Monthly KPI Data Loader
-
-Loads Huawei MAOS monthly KPI counter data from Excel files.
-Used for launch detection and pre-launch feature extraction.
-
-Key counters:
-- L.Traffic.User.Avg: Average traffic per user (launch detection)
-- L.Thrp.bits.DL/UL: Downlink/uplink throughput
-- L.ChMeas.PRB.UL.Used.Avg/L.ChMeas.PRB.DL.Used.Avg: PRB utilization
-- L.Traffic.User.RRC.Conn.Avg: RRC connected users
-- L.ChMeas.PDSCH.PRB.DL.Used.Avg: PDSCH PRB usage
-- L.ChMeas.RSRP.*.Avg: RSRP measurements
-
-Reference: Spec Section 5.1 (Launch Detection Algorithm)
+MAOS Monthly KPI Data Loader for Smart CAPEX.
+Loads and processes 36-month Huawei MAOS counter data.
 """
 
-import polars as pl
+from typing import Dict, List, Optional, Tuple
+import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Optional
-import logging
+
+import pandas as pd
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
-class MAOSLoader:
-    """Load and process MAOS monthly KPI data for launch detection and feature extraction."""
+class MAOSMonthlyLoader:
+    """
+    Load and process MAOS monthly KPI data from CSV files.
     
-    # Expected column mappings (MAOS export format may vary)
-    COLUMN_MAPPING = {
-        # Cell identifiers
-        'cell_name': 'CELL_NAME',
-        'cell_id': 'CELL_ID',
-        'site_name': 'SITE_NAME',
-        'site_id': 'SITE_ID',
-        
-        # Traffic counters
-        'L.Traffic.User.Avg': 'traffic_user_avg',
-        'L.Thrp.bits.DL': 'thrp_bits_dl',
-        'L.Thrp.bits.UL': 'thrp_bits_ul',
-        
-        # PRB utilization
-        'L.ChMeas.PRB.DL.Used.Avg': 'prb_util_dl_pct',
-        'L.ChMeas.PRB.UL.Used.Avg': 'prb_util_ul_pct',
-        
-        # RRC connections
-        'L.Traffic.User.RRC.Conn.Avg': 'rrc_conn_avg',
-        'L.Traffic.User.Active.Avg': 'active_users_avg',
-        
-        # Radio quality
-        'L.ChMeas.CQI.Avg': 'cqi_avg',
-        'L.ChMeas.RSRP.Avg': 'rsrp_avg_dbm',
-        
-        # Time dimension
-        'month': 'month_date',
-        'date': 'month_date',
-    }
+    Expected CSV format (from Huawei MAOS):
+    - Columns: Site_ID, Cell_ID, Month, <KPI columns>
+    - KPI columns: DL_Traffic_GB, PRB_Utilization_Pct, RRC_Connected_Users, etc.
+    - 36 months of historical data per site/cell
+    """
     
-    def __init__(self, maos_dir: Path):
+    # Expected KPI columns in MAOS CSV
+    REQUIRED_COLUMNS = [
+        'Site_ID',
+        'Cell_ID', 
+        'Month',
+    ]
+    
+    # KPI columns (may vary by MAOS export)
+    KPI_COLUMNS = [
+        'DL_Traffic_GB',          # Downlink traffic (GB)
+        'PRB_Utilization_Pct',    # PRB utilization (%)
+        'RRC_Connected_Users',    # Average connected users
+        'Avg_User_Throughput_Mbps', # Average user throughput (Mbps)
+        'Latency_P95_ms',         # P95 latency (ms)
+        'Coverage_Ratio',         # Coverage ratio (0-1)
+        'Handover_Success_Rate',  # Handover success rate (%)
+    ]
+    
+    def __init__(self, csv_path: str):
         """
-        Initialize MAOS loader.
+        Initialize MAOS monthly loader.
         
         Args:
-            maos_dir: Directory containing MAOS Excel files
+            csv_path: Path to MAOS monthly KPI CSV file
         """
-        self.maos_dir = Path(maos_dir)
-        self.data = None
+        self.csv_path = Path(csv_path)
+        self.df = None
         
-    def load(self, file_pattern: str = "*.xlsx") -> pl.DataFrame:
+        if not self.csv_path.exists():
+            raise FileNotFoundError(f"MAOS CSV file not found: {csv_path}")
+        
+        logger.info(f"Initialized MAOSMonthlyLoader with file: {csv_path}")
+    
+    def load(self) -> pd.DataFrame:
         """
-        Load MAOS monthly KPI data from Excel files.
+        Load MAOS CSV data into DataFrame.
+        
+        Returns:
+            DataFrame with MAOS monthly KPI data
+        """
+        logger.info(f"Loading MAOS data from {self.csv_path}...")
+        
+        try:
+            # Read CSV with flexible encoding
+            self.df = pd.read_csv(self.csv_path, encoding='utf-8-sig')
+            
+            # Clean column names (remove whitespace, standardize)
+            self.df.columns = self.df.columns.str.strip()
+            
+            logger.info(f"Loaded {len(self.df)} rows, {len(self.df.columns)} columns")
+            logger.info(f"Columns: {list(self.df.columns)}")
+            
+            # Validate required columns
+            self._validate_columns()
+            
+            # Parse month column to datetime
+            if 'Month' in self.df.columns:
+                self.df['Month'] = pd.to_datetime(self.df['Month'], errors='coerce')
+            
+            # Sort by Site_ID, Cell_ID, Month
+            self.df = self.df.sort_values(['Site_ID', 'Cell_ID', 'Month'])
+            
+            return self.df
+            
+        except Exception as e:
+            logger.error(f"Failed to load MAOS CSV: {e}")
+            raise
+    
+    def _validate_columns(self):
+        """Validate that required columns are present."""
+        if self.df is None:
+            return
+        
+        missing = [col for col in self.REQUIRED_COLUMNS if col not in self.df.columns]
+        
+        if missing:
+            logger.warning(f"Missing required columns: {missing}")
+            logger.warning("Available columns will be used for KPI extraction")
+    
+    def get_site_monthly_data(self, site_id: str) -> pd.DataFrame:
+        """
+        Get all monthly KPI data for a specific site.
         
         Args:
-            file_pattern: Glob pattern for Excel files (default: "*.xlsx")
+            site_id: Site identifier
             
         Returns:
-            Polars DataFrame with normalized KPI data
+            DataFrame with monthly KPI data for site (all cells aggregated)
         """
-        logger.info(f"Loading MAOS data from {self.maos_dir}")
+        if self.df is None:
+            raise ValueError("Data not loaded. Call load() first.")
         
-        # Find all Excel files
-        maos_files = list(self.maos_dir.glob(file_pattern))
-        if not maos_files:
-            logger.warning(f"No MAOS files found matching {file_pattern} in {self.maos_dir}")
-            return pl.DataFrame()
+        site_data = self.df[self.df['Site_ID'] == site_id].copy()
         
-        logger.info(f"Found {len(maos_files)} MAOS file(s)")
+        if len(site_data) == 0:
+            logger.warning(f"No data found for site {site_id}")
+            return pd.DataFrame()
         
-        # Load and concatenate all files
-        dfs = []
-        for file_path in maos_files:
-            try:
-                logger.info(f"Loading {file_path.name}")
-                df = self._load_single_file(file_path)
-                dfs.append(df)
-            except Exception as e:
-                logger.error(f"Failed to load {file_path}: {e}")
+        # Aggregate cells to site level (sum traffic, avg others)
+        agg_dict = {}
+        
+        for col in site_data.columns:
+            if col in ['Site_ID', 'Month']:
                 continue
+            elif col == 'Cell_ID':
+                agg_dict[col] = 'count'  # Count of cells
+            elif 'Traffic' in col or 'GB' in col:
+                agg_dict[col] = 'sum'  # Sum traffic
+            elif col in self.df.select_dtypes(include=[np.number]).columns:
+                agg_dict[col] = 'mean'  # Average other KPIs
         
-        if not dfs:
-            logger.error("No MAOS data loaded successfully")
-            return pl.DataFrame()
+        if 'Month' in site_data.columns:
+            site_agg = site_data.groupby(['Site_ID', 'Month']).agg(agg_dict).reset_index()
+        else:
+            site_agg = site_data.groupby('Site_ID').agg(agg_dict).reset_index()
         
-        # Concatenate all dataframes
-        self.data = pl.concat(dfs, how="vertical")
-        
-        # Normalize and validate
-        self.data = self._normalize_data(self.data)
-        
-        logger.info(f"Loaded {len(self.data)} MAOS records")
-        logger.info(f"Date range: {self.data['month_date'].min()} to {self.data['month_date'].max()}")
-        logger.info(f"Unique cells: {self.data['cell_name'].n_unique()}")
-        
-        return self.data
+        return site_agg
     
-    def _load_single_file(self, file_path: Path) -> pl.DataFrame:
-        """Load a single MAOS Excel file."""
-        # Read Excel file
-        df = pl.read_excel(file_path)
-        
-        # Normalize column names (remove spaces, lowercase)
-        df.columns = [col.strip().replace(' ', '_').lower() for col in df.columns]
-        
-        return df
-    
-    def _normalize_data(self, df: pl.DataFrame) -> pl.DataFrame:
-        """
-        Normalize MAOS data:
-        - Map columns to standard names
-        - Parse dates
-        - Handle missing values
-        - Convert units
-        """
-        # Create column mapping (flexible matching)
-        rename_map = {}
-        for orig_col in df.columns:
-            for maos_col, std_col in self.COLUMN_MAPPING.items():
-                if maos_col.lower().replace('.', '_').replace(' ', '_') in orig_col:
-                    rename_map[orig_col] = std_col
-                    break
-        
-        # Rename columns
-        df = df.rename(rename_map)
-        
-        # Parse month_date if it's a string
-        if 'month_date' in df.columns:
-            if df['month_date'].dtype == pl.Utf8:
-                df = df.with_columns([
-                    pl.col('month_date').str.strptime(pl.Date, format='%Y-%m-%d', strict=False)
-                ])
-        
-        # Fill missing numeric values with 0
-        numeric_cols = [
-            'traffic_user_avg', 'thrp_bits_dl', 'thrp_bits_ul',
-            'prb_util_dl_pct', 'prb_util_ul_pct', 'rrc_conn_avg',
-            'active_users_avg', 'cqi_avg', 'rsrp_avg_dbm'
-        ]
-        for col in numeric_cols:
-            if col in df.columns:
-                df = df.with_columns([
-                    pl.col(col).fill_null(0).fill_nan(0)
-                ])
-        
-        # Sort by cell and date
-        if 'cell_name' in df.columns and 'month_date' in df.columns:
-            df = df.sort(['cell_name', 'month_date'])
-        
-        return df
-    
-    def detect_launches(
+    def detect_launch_month(
         self,
-        min_traffic_threshold: float = 0.0,
-        lookback_months: int = 2
-    ) -> pl.DataFrame:
+        site_id: str,
+        traffic_col: str = 'DL_Traffic_GB',
+        min_traffic_threshold: float = 0.1
+    ) -> Optional[datetime]:
         """
-        Detect newly launched cells using KPI-based algorithm.
+        Detect launch month for a site based on traffic appearance.
         
-        Algorithm (Spec Section 5.1):
-        1. For each cell, find first month where traffic_user_avg > 0
-        2. Verify NO traffic in previous lookback_months
-        3. Mark as launch if criteria met
+        Launch detected when:
+        - First month with traffic > threshold
+        - No prior traffic history
         
         Args:
-            min_traffic_threshold: Minimum traffic to consider "active" (default: 0.0)
-            lookback_months: Number of months to check for no prior traffic (default: 2)
+            site_id: Site identifier
+            traffic_col: Column name for traffic metric
+            min_traffic_threshold: Minimum traffic to consider as launch (GB)
             
         Returns:
-            DataFrame with columns: cell_name, launch_date, pre_launch_months
+            Launch month as datetime, or None if not detected
         """
-        if self.data is None or len(self.data) == 0:
-            logger.warning("No MAOS data loaded. Call load() first.")
-            return pl.DataFrame()
+        site_data = self.get_site_monthly_data(site_id)
         
-        logger.info("Detecting launches using KPI-based algorithm...")
+        if len(site_data) == 0 or traffic_col not in site_data.columns:
+            return None
         
-        # Get data with traffic > threshold
-        active_data = self.data.filter(pl.col('traffic_user_avg') > min_traffic_threshold)
+        # Sort by month
+        site_data = site_data.sort_values('Month')
         
-        # Find first active month for each cell
-        first_active = (
-            active_data
-            .group_by('cell_name')
-            .agg([
-                pl.col('month_date').min().alias('first_active_month')
-            ])
-        )
+        # Find first month with traffic > threshold
+        has_traffic = site_data[traffic_col] > min_traffic_threshold
         
-        # For each cell, check if there was NO traffic in previous months
-        launches = []
-        for row in first_active.iter_rows(named=True):
-            cell_name = row['cell_name']
-            first_month = row['first_active_month']
-            
-            # Get all data for this cell before first active month
-            prior_data = self.data.filter(
-                (pl.col('cell_name') == cell_name) &
-                (pl.col('month_date') < first_month)
-            )
-            
-            # Check if there are at least lookback_months of prior data with zero traffic
-            if len(prior_data) >= lookback_months:
-                max_prior_traffic = prior_data['traffic_user_avg'].max()
-                if max_prior_traffic <= min_traffic_threshold:
-                    launches.append({
-                        'cell_name': cell_name,
-                        'launch_date': first_month,
-                        'pre_launch_months': len(prior_data)
-                    })
+        if not has_traffic.any():
+            return None  # No traffic ever
         
-        if not launches:
-            logger.warning("No launches detected")
-            return pl.DataFrame()
+        # Get first month with traffic
+        launch_idx = has_traffic.idxmax()
+        launch_month = site_data.loc[launch_idx, 'Month']
         
-        launch_df = pl.DataFrame(launches)
-        logger.info(f"Detected {len(launch_df)} cell launches")
+        # Verify no prior traffic
+        prior_months = site_data[site_data['Month'] < launch_month]
+        if len(prior_months) > 0:
+            max_prior_traffic = prior_months[traffic_col].max()
+            if max_prior_traffic > min_traffic_threshold:
+                # Had prior traffic - not a true launch
+                return None
         
-        return launch_df
+        return launch_month
     
-    def get_pre_launch_kpis(
+    def compute_pre_launch_kpis(
         self,
-        cell_name: str,
-        launch_date: datetime,
-        months_before: int = 1
-    ) -> Optional[Dict]:
+        site_id: str,
+        launch_month: datetime,
+        n_months_pre: int = 6
+    ) -> Dict[str, float]:
         """
-        Extract pre-launch KPIs for a cell.
+        Compute pre-launch KPI averages for a site.
         
-        Used for building pre-launch feature vectors (9 features).
+        Averages KPIs over n_months_pre before launch month.
         
         Args:
-            cell_name: Cell name
-            launch_date: Launch date
-            months_before: Number of months before launch to extract (default: 1)
+            site_id: Site identifier
+            launch_month: Launch month (detected or provided)
+            n_months_pre: Number of months before launch to average
             
         Returns:
-            Dictionary with pre-launch KPI aggregates or None if insufficient data
+            Dictionary of pre-launch KPI averages
         """
-        if self.data is None:
-            return None
+        site_data = self.get_site_monthly_data(site_id)
         
-        # Get data from months_before period before launch
-        pre_data = self.data.filter(
-            (pl.col('cell_name') == cell_name) &
-            (pl.col('month_date') < launch_date) &
-            (pl.col('month_date') >= launch_date - pl.duration(days=30 * months_before))
-        )
-        
-        if len(pre_data) == 0:
-            return None
-        
-        # Compute aggregates
-        kpis = {
-            'avg_traffic_dl_gb': pre_data['thrp_bits_dl'].mean() / (8 * 1e9) if 'thrp_bits_dl' in pre_data.columns else 0.0,
-            'avg_traffic_ul_gb': pre_data['thrp_bits_ul'].mean() / (8 * 1e9) if 'thrp_bits_ul' in pre_data.columns else 0.0,
-            'avg_users': pre_data['active_users_avg'].mean() if 'active_users_avg' in pre_data.columns else 0.0,
-            'avg_prb_util_pct': pre_data['prb_util_dl_pct'].mean() if 'prb_util_dl_pct' in pre_data.columns else 0.0,
-            'peak_hour_traffic_gb': pre_data['thrp_bits_dl'].max() / (8 * 1e9) if 'thrp_bits_dl' in pre_data.columns else 0.0,
-            'peak_hour_users': pre_data['active_users_avg'].max() if 'active_users_avg' in pre_data.columns else 0.0,
-            'avg_cqi': pre_data['cqi_avg'].mean() if 'cqi_avg' in pre_data.columns else 0.0,
-            'avg_rsrp_dbm': pre_data['rsrp_avg_dbm'].mean() if 'rsrp_avg_dbm' in pre_data.columns else -100.0,
-            'congestion_hours_per_day': 0.0  # Placeholder - requires hourly data
-        }
-        
-        return kpis
-    
-    def get_statistics(self) -> Dict:
-        """Get statistics about loaded MAOS data."""
-        if self.data is None or len(self.data) == 0:
+        if len(site_data) == 0 or 'Month' not in site_data.columns:
             return {}
         
-        return {
-            'total_records': len(self.data),
-            'unique_cells': self.data['cell_name'].n_unique() if 'cell_name' in self.data.columns else 0,
-            'date_range': {
-                'min': str(self.data['month_date'].min()) if 'month_date' in self.data.columns else None,
-                'max': str(self.data['month_date'].max()) if 'month_date' in self.data.columns else None
-            },
-            'avg_traffic_per_cell': self.data['traffic_user_avg'].mean() if 'traffic_user_avg' in self.data.columns else 0.0,
-            'cells_with_zero_traffic': len(self.data.filter(pl.col('traffic_user_avg') == 0)) if 'traffic_user_avg' in self.data.columns else 0
+        # Get pre-launch period
+        pre_launch = site_data[
+            (site_data['Month'] < launch_month) &
+            (site_data['Month'] >= launch_month - pd.DateOffset(months=n_months_pre))
+        ]
+        
+        if len(pre_launch) == 0:
+            logger.warning(f"No pre-launch data for site {site_id}")
+            return {}
+        
+        # Compute averages for numeric columns
+        kpi_avgs = {}
+        numeric_cols = pre_launch.select_dtypes(include=[np.number]).columns
+        
+        for col in numeric_cols:
+            if col not in ['Site_ID', 'Cell_ID']:
+                kpi_avgs[f'{col}_pre'] = pre_launch[col].mean()
+        
+        return kpi_avgs
+    
+    def extract_kpi_features_batch(
+        self,
+        site_ids: List[str],
+        launch_dates: Optional[Dict[str, datetime]] = None
+    ) -> List[Dict]:
+        """
+        Extract pre-launch KPI features for multiple sites.
+        
+        Args:
+            site_ids: List of site identifiers
+            launch_dates: Optional dict of {site_id: launch_month}
+                         If not provided, will auto-detect launches
+            
+        Returns:
+            List of dicts with KPI features per site
+        """
+        results = []
+        total = len(site_ids)
+        
+        logger.info(f"Extracting KPI features for {total} sites...")
+        
+        for idx, site_id in enumerate(site_ids, 1):
+            # Get or detect launch month
+            if launch_dates and site_id in launch_dates:
+                launch_month = launch_dates[site_id]
+            else:
+                launch_month = self.detect_launch_month(site_id)
+            
+            if launch_month is None:
+                logger.warning(f"No launch detected for site {site_id}, skipping KPI extraction")
+                results.append({
+                    'site_id': site_id,
+                    'launch_month': None,
+                    'kpis': {}
+                })
+                continue
+            
+            # Compute pre-launch KPIs
+            kpis = self.compute_pre_launch_kpis(site_id, launch_month)
+            
+            results.append({
+                'site_id': site_id,
+                'launch_month': launch_month,
+                'kpis': kpis
+            })
+            
+            if idx % 10 == 0 or idx == total:
+                logger.info(f"Processed {idx}/{total} sites ({idx/total*100:.1f}%)")
+        
+        successful = sum(1 for r in results if r['launch_month'] is not None)
+        logger.info(f"KPI feature extraction complete: {successful}/{total} sites with detected launches")
+        
+        return results
+    
+    def get_summary_stats(self) -> Dict:
+        """
+        Get summary statistics of loaded MAOS data.
+        
+        Returns:
+            Dictionary with summary statistics
+        """
+        if self.df is None:
+            raise ValueError("Data not loaded. Call load() first.")
+        
+        stats = {
+            'total_rows': len(self.df),
+            'unique_sites': self.df['Site_ID'].nunique() if 'Site_ID' in self.df.columns else 0,
+            'unique_cells': self.df['Cell_ID'].nunique() if 'Cell_ID' in self.df.columns else 0,
+            'date_range': None,
+            'kpi_columns': []
         }
+        
+        if 'Month' in self.df.columns:
+            stats['date_range'] = (
+                self.df['Month'].min(),
+                self.df['Month'].max()
+            )
+        
+        numeric_cols = self.df.select_dtypes(include=[np.number]).columns
+        stats['kpi_columns'] = [col for col in numeric_cols if col not in ['Site_ID', 'Cell_ID']]
+        
+        return stats
