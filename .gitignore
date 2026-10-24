@@ -10,6 +10,8 @@ env/
 venv/
 ENV/
 .venv
+.clinerules
+.tracking
 pip-log.txt
 pip-delete-this-directory.txt
 
