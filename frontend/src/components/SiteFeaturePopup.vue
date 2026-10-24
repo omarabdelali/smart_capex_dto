@@ -26,6 +26,9 @@
           <span class="badge" :class="positionBadgeClass">
             {{ positionLabel }}
           </span>
+          <span v-for="event in features.addition_events" :key="event.event_type" class="badge addition">
+            {{ eventLabel(event.event_type) }}
+          </span>
         </div>
       </div>
       
@@ -62,7 +65,28 @@
               <span class="label">Technologies:</span>
               <span class="value">{{ features.technologies.join(', ') }}</span>
             </div>
+            <div v-if="features.launch_date" class="info-item launch-date-item">
+              <span class="label">Launch / addition date:</span>
+              <span class="value">{{ features.launch_date }}</span>
+            </div>
           </div>
+          <section v-if="features.added_cells?.length" class="added-cells">
+            <h4>Detected cell additions</h4>
+            <ul>
+              <li v-for="cell in features.added_cells" :key="cell.cell_name">
+                <strong>{{ cell.cell_name }} ({{ cell.technology }})</strong>
+                <span>{{ eventLabel(cell.event_type) }} · {{ cell.launch_date }}</span>
+              </li>
+            </ul>
+          </section>
+          <section v-if="features.matched_cells?.length" class="matched-cells">
+            <h4>Matching cells</h4>
+            <ul>
+              <li v-for="cell in features.matched_cells" :key="cell.cell_name">
+                <strong>{{ cell.cell_name }}</strong><span>{{ cell.technology }}</span>
+              </li>
+            </ul>
+          </section>
         </div>
         
         <!-- Geometric Tab -->
@@ -158,6 +182,38 @@
           </div>
           <p v-else class="no-data">No spatial features available</p>
         </div>
+
+        <!-- KPI and configuration features -->
+        <div v-if="activeTab === 'network'" class="tab-pane">
+          <h4>MAOS pre-launch KPIs</h4>
+          <div v-if="features.kpi" class="info-grid">
+            <div v-for="(value, key) in features.kpi" :key="key" class="info-item">
+              <span class="label">{{ formatLabel(key) }}:</span>
+              <span class="value">{{ formatValue(value) }}</span>
+            </div>
+          </div>
+          <p v-else class="no-data">No extracted MAOS KPI features stored for this site</p>
+
+          <h4>Site configuration</h4>
+          <div v-if="features.configuration" class="info-grid">
+            <div v-for="(value, key) in features.configuration" :key="key" class="info-item">
+              <span class="label">{{ formatLabel(key) }}:</span>
+              <span class="value">{{ formatValue(value) }}</span>
+            </div>
+          </div>
+          <p v-else class="no-data">No configuration features stored for this site</p>
+
+          <h4>Cluster context</h4>
+          <div v-if="features.cluster_features" class="info-grid">
+            <div v-for="(value, key) in features.cluster_features" :key="key" class="info-item">
+              <span class="label">{{ formatLabel(key) }}:</span>
+              <span class="value">{{ formatValue(value) }}</span>
+            </div>
+          </div>
+          <p v-else class="no-data">No cluster feature values stored for this site</p>
+
+          <MAOSMonthlyChart :records="features.maos_monthly || []" :cell-records="features.maos_cells || []" />
+        </div>
         
         <!-- ANP Tab -->
         <div v-if="activeTab === 'anp'" class="tab-pane">
@@ -175,12 +231,14 @@
 import { ref, computed, watch } from 'vue';
 import axios from 'axios';
 import ANPPolarChart from './ANPPolarChart.vue';
+import MAOSMonthlyChart from './MAOSMonthlyChart.vue';
 
 export default {
   name: 'SiteFeaturePopup',
   
   components: {
-    ANPPolarChart
+    ANPPolarChart,
+    MAOSMonthlyChart
   },
   
   props: {
@@ -191,6 +249,14 @@ export default {
     apiBaseUrl: {
       type: String,
       default: 'http://localhost:8000/api'
+    },
+    layoutUpdate: {
+      type: Function,
+      default: () => {}
+    },
+    searchQuery: {
+      type: String,
+      default: ''
     }
   },
   
@@ -205,6 +271,7 @@ export default {
       { id: 'geometric', label: 'Terrain' },
       { id: 'clutter', label: 'Clutter' },
       { id: 'spatial', label: 'Spatial' },
+      { id: 'network', label: 'KPIs & Config' },
       { id: 'anp', label: 'ANP' }
     ];
     
@@ -254,6 +321,19 @@ export default {
       if (entropy < 1.0) return 'Mixed land cover';
       return 'Highly diverse land cover';
     });
+
+    const formatLabel = key => key.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+    const eventLabel = eventType => ({
+      SITE_ADDED: 'Site added',
+      LTE_ADDED: 'LTE added',
+      '3G_ADDED': '3G added',
+      '2G_ADDED': '2G added'
+    }[eventType] || eventType);
+    const formatValue = value => {
+      if (value === null || value === undefined || value === '') return 'N/A';
+      if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+      return typeof value === 'number' ? Number(value.toFixed(3)).toString() : value;
+    };
     
     /**
      * Fetch site features from API
@@ -263,13 +343,16 @@ export default {
       error.value = null;
       
       try {
-        const response = await axios.get(`${props.apiBaseUrl}/sites/${props.siteId}/features/`);
+        const response = await axios.get(`${props.apiBaseUrl}/sites/${props.siteId}/features/`, {
+          params: props.searchQuery ? { search: props.searchQuery } : {}
+        });
         features.value = response.data;
       } catch (err) {
         console.error('Error fetching site features:', err);
         error.value = 'Failed to load site features';
       } finally {
         loading.value = false;
+        props.layoutUpdate();
       }
     };
     
@@ -279,6 +362,8 @@ export default {
         fetchFeatures();
       }
     }, { immediate: true });
+
+    watch(activeTab, () => props.layoutUpdate());
     
     return {
       features,
@@ -293,7 +378,10 @@ export default {
       entropyDisplay,
       entropyClass,
       entropyPercentage,
-      entropyDescription
+      entropyDescription,
+      formatLabel,
+      formatValue,
+      eventLabel
     };
   }
 };
@@ -301,8 +389,10 @@ export default {
 
 <style scoped>
 .site-feature-popup {
-  min-width: 400px;
-  max-width: 500px;
+  width: min(500px, calc(100vw - 56px));
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .loading-state,
@@ -373,15 +463,40 @@ export default {
   background-color: rgba(76, 175, 80, 0.9);
 }
 
+.badge.addition {
+  background: #087f5b;
+  color: #fff;
+}
+
+.added-cells {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+  background: #ecfdf5;
+}
+
+.added-cells h4 { margin-bottom: 8px; color: #065f46; font-size: 13px; }
+.added-cells ul { list-style: none; display: grid; gap: 6px; }
+.added-cells li { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: #1f2937; }
+.added-cells li strong { overflow-wrap: anywhere; }
+.added-cells li span { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.matched-cells { margin-top: 12px; padding: 12px; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; }
+.matched-cells h4 { margin-bottom: 8px; color: #1d4ed8; font-size: 13px; }
+.matched-cells ul { list-style: none; display: grid; gap: 6px; }
+.matched-cells li { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.matched-cells li strong { overflow-wrap: anywhere; }
+
 .tab-nav {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   background-color: #f5f5f5;
   border-bottom: 2px solid #ddd;
 }
 
 .tab-button {
-  flex: 1;
-  padding: 10px;
+  min-width: 0;
+  padding: 9px 5px;
   background: none;
   border: none;
   cursor: pointer;
@@ -546,5 +661,23 @@ export default {
 
 .high-entropy .entropy-description {
   color: #c62828;
+}
+
+@media (max-width: 480px) {
+  .site-feature-popup { width: calc(100vw - 56px); }
+  .site-header { padding: 11px; }
+  .site-header h3 { font-size: 16px; }
+  .tab-pane { padding: 10px; }
+  .tab-button { font-size: 11px; padding: 8px 3px; }
+  .info-grid { grid-template-columns: minmax(0, 1fr); gap: 9px; }
+  .entropy-highlight { padding: 12px; margin-bottom: 12px; }
+  .entropy-value { font-size: 28px; }
+  .chart-header { align-items: flex-start; gap: 8px; }
+  .chart-header h4 { font-size: 14px; }
+  .edge-score { padding: 5px 7px; gap: 4px; }
+  .score-label { font-size: 10px; }
+  .score-value { font-size: 13px; }
+  .maos-history .history-heading { align-items: flex-start; flex-direction: column; }
+  .maos-history select { max-width: 100%; width: 100%; }
 }
 </style>

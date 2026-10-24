@@ -32,19 +32,23 @@ export default {
 #app {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app-header {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  padding: 20px;
+  flex: 0 0 auto;
+  padding: clamp(10px, 1.5vw, 20px);
   box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
 
 .app-header h1 {
-  font-size: 28px;
+  font-size: clamp(18px, 2vw, 28px);
   margin-bottom: 5px;
 }
 
@@ -55,6 +59,13 @@ export default {
 
 .app-main {
   flex: 1;
+  min-height: 0;
   overflow: hidden;
+}
+
+@media (max-width: 760px) {
+  .app-header { padding: 8px 12px; }
+  .app-header h1 { font-size: 17px; margin-bottom: 2px; }
+  .app-header p { font-size: 11px; }
 }
 </style>

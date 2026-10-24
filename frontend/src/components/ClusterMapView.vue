@@ -1,7 +1,13 @@
 <template>
   <div class="cluster-map-container">
+    <div class="mobile-map-toolbar">
+      <button type="button" @click="controlsOpen = !controlsOpen" :aria-expanded="controlsOpen">
+        {{ controlsOpen ? 'Hide controls' : 'Map controls' }}
+      </button>
+      <strong>Smart CAPEX</strong>
+    </div>
     <!-- Map controls panel -->
-    <div class="map-controls">
+    <div class="map-controls" :class="{ 'controls-open': controlsOpen }">
       <h3>Cluster Visualization</h3>
       
       <!-- Cluster statistics -->
@@ -42,7 +48,36 @@
           <input type="checkbox" v-model="filters.showOutOfBounds" @change="updateMap">
           Show Out-of-Bounds
         </label>
+        <div class="addition-legend">
+          <span class="addition-legend-icon event-site">S</span><span>Site added</span>
+          <span class="addition-legend-icon event-lte">4G</span><span>LTE added</span>
+          <span class="addition-legend-icon event-3g">3G</span><span>3G added</span>
+          <span class="addition-legend-icon event-2g">2G</span><span>2G added</span>
+        </div>
       </div>
+
+      <div class="event-filter">
+        <label for="event-type-select">Show event:</label>
+        <select id="event-type-select" v-model="selectedEventType" @change="updateMap">
+          <option value="ALL">All events</option>
+          <option value="SITE_ADDED">Site added</option>
+          <option value="LTE_ADDED">LTE added</option>
+          <option value="3G_ADDED">3G added</option>
+          <option value="2G_ADDED">2G added</option>
+        </select>
+      </div>
+
+      <form class="site-search" @submit.prevent="searchSites">
+        <label for="site-search-input">Find a site or cell</label>
+        <div class="search-row">
+          <input id="site-search-input" v-model="siteSearch" type="search" placeholder="Name or partial name">
+          <button type="submit">Find</button>
+        </div>
+        <button v-if="searchQuery" type="button" class="clear-search" @click="clearSearch">Clear search</button>
+        <p v-if="searchResultCount !== null" class="search-result-count">
+          {{ searchResultCount ? `${searchResultCount} matching site(s)` : 'No matching sites or cells' }}
+        </p>
+      </form>
 
       <!-- DEM Layer Controls -->
       <div class="dem-controls">
@@ -93,11 +128,12 @@
 </template>
 
 <script>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, createApp, nextTick } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import axios from 'axios';
 import ElevationLegend from './ElevationLegend.vue';
+import SiteFeaturePopup from './SiteFeaturePopup.vue';
 
 export default {
   name: 'ClusterMapView',
@@ -110,10 +146,17 @@ export default {
     const mapContainer = ref(null);
     const map = ref(null);
     const sitesLayer = ref(null);
+    const neighborLayer = ref(null);
+    let activeFeatureApp = null;
     const stats = ref(null);
     const loading = ref(false);
     const error = ref(null);
     const selectedCluster = ref(null);
+    const selectedEventType = ref('ALL');
+    const siteSearch = ref('');
+    const searchQuery = ref('');
+    const searchResultCount = ref(null);
+    const controlsOpen = ref(typeof window === 'undefined' || window.innerWidth > 760);
     
     const filters = ref({
       showEdge: true,
@@ -150,6 +193,7 @@ export default {
 
       // Create layer group for sites
       sitesLayer.value = L.layerGroup().addTo(map.value);
+      neighborLayer.value = L.layerGroup().addTo(map.value);
     };
 
     /**
@@ -175,9 +219,10 @@ export default {
       try {
         // Build query parameters
         const params = {};
-        if (selectedCluster.value !== null) {
+        if (selectedCluster.value !== null && !searchQuery.value) {
           params.cluster_id = selectedCluster.value;
         }
+        if (searchQuery.value) params.search = searchQuery.value;
 
         console.log('Fetching cluster data with params:', params);
 
@@ -219,6 +264,8 @@ export default {
      * Check if site should be displayed based on filters
      */
     const shouldDisplaySite = (properties) => {
+      if (searchQuery.value) return true;
+
       // Filter out-of-bounds sites
       if (properties.out_of_bounds && !filters.value.showOutOfBounds) {
         return false;
@@ -238,28 +285,41 @@ export default {
           return false;
         }
       }
+
+      if (selectedEventType.value !== 'ALL' &&
+          !(properties.addition_events || []).some(event => event.event_type === selectedEventType.value)) {
+        return false;
+      }
       
       return true;
     };
 
-    /**
-     * Create popup content for site marker
-     */
-    const createPopupContent = (feature) => {
-      const props = feature.properties;
-      const coords = feature.geometry.coordinates; // [lon, lat] in GeoJSON
-      return `
-        <div class="site-popup">
-          <h4>${props.site_name}</h4>
-          <p><strong>Site ID:</strong> ${props.site_id}</p>
-          <p><strong>Coordinates:</strong> ${coords[1].toFixed(4)}, ${coords[0].toFixed(4)}</p>
-          <p><strong>Cluster ID:</strong> ${props.cluster_id === -1 ? 'Noise' : props.cluster_id}</p>
-          <p><strong>Position:</strong> ${props.is_cluster_edge ? 'Edge' : 'Interior'}</p>
-          <p><strong>Cells:</strong> ${props.cell_count}</p>
-          <p><strong>Technologies:</strong> ${props.technologies.join(', ')}</p>
-          ${props.out_of_bounds ? '<p class="warning"><strong>⚠ Out of Bounds</strong></p>' : ''}
-        </div>
-      `;
+    const distanceMeters = (a, b) => {
+      const toRad = value => value * Math.PI / 180;
+      const dLat = toRad(b[1] - a[1]);
+      const dLon = toRad(b[0] - a[0]);
+      const lat1 = toRad(a[1]);
+      const lat2 = toRad(b[1]);
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    };
+
+    const showNeighborLinks = (selected, features) => {
+      neighborLayer.value.clearLayers();
+      const origin = selected.geometry.coordinates;
+      const neighbors = features.map(candidate => ({
+        feature: candidate,
+        distance: distanceMeters(origin, candidate.geometry.coordinates)
+      })).filter(item => item.feature.properties.site_id !== selected.properties.site_id && item.distance <= 3000)
+        .sort((a, b) => a.distance - b.distance).slice(0, 30);
+
+      neighbors.forEach(({ feature: candidate, distance }) => {
+        const target = candidate.geometry.coordinates;
+        L.polyline([[origin[1], origin[0]], [target[1], target[0]]], {
+          color: '#2563eb', weight: 1.5, opacity: 0.65, dashArray: '5, 5'
+        }).bindTooltip(`${candidate.properties.site_name} · ${(distance / 1000).toFixed(2)} km`)
+          .addTo(neighborLayer.value);
+      });
     };
 
     /**
@@ -278,8 +338,10 @@ export default {
       const geojson = await fetchClusterData();
       if (!geojson || !geojson.features || geojson.features.length === 0) {
         console.warn('No features to display');
+        if (searchQuery.value) searchResultCount.value = 0;
         return;
       }
+      if (searchQuery.value) searchResultCount.value = geojson.features.length;
 
       console.log(`Total features fetched: ${geojson.features.length}`);
       console.log('Current filters:', filters.value);
@@ -307,6 +369,30 @@ export default {
           // CRITICAL: Leaflet automatically converts GeoJSON [lon, lat] to L.LatLng [lat, lon]
           // The latlng parameter here is already in correct Leaflet format
           console.log(`Creating marker at ${latlng.lat}, ${latlng.lng} for site ${feature.properties.site_name}`);
+          if (feature.properties.added_cell_count > 0) {
+            const events = feature.properties.addition_events || [];
+            const shownEvents = selectedEventType.value === 'ALL'
+              ? events
+              : events.filter(event => event.event_type === selectedEventType.value);
+            const icons = shownEvents.map(event => {
+              const details = {
+                SITE_ADDED: ['site', 'S'],
+                LTE_ADDED: ['lte', '4G'],
+                '3G_ADDED': ['3g', '3G'],
+                '2G_ADDED': ['2g', '2G']
+              }[event.event_type];
+              return details ? `<span class="site-addition-icon event-${details[0]}">${details[1]}</span>` : '';
+            }).join('');
+            return L.marker(latlng, {
+              title: `${feature.properties.site_name} · ${shownEvents.map(event => event.event_type.replace('_ADDED', ' added')).join(', ')}`,
+              icon: L.divIcon({
+                className: 'site-addition-marker',
+                html: `<span class="site-addition-icons">${icons}</span>`,
+                iconSize: [Math.max(28, shownEvents.length * 27), 30],
+                iconAnchor: [Math.max(14, shownEvents.length * 27 / 2), 15]
+              })
+            });
+          }
           const color = getMarkerColor(feature.properties);
           const marker = L.circleMarker(latlng, {
             radius: 6,
@@ -321,7 +407,39 @@ export default {
         },
         
         onEachFeature: (feature, layer) => {
-          layer.bindPopup(createPopupContent(feature));
+          const mountNode = document.createElement('div');
+          const viewportWidth = window.visualViewport?.width || window.innerWidth;
+          const viewportHeight = window.visualViewport?.height || window.innerHeight;
+          const popupWidth = Math.max(260, viewportWidth - 32);
+          layer.bindPopup(mountNode, {
+            maxWidth: Math.min(540, popupWidth),
+            minWidth: Math.min(420, popupWidth),
+            maxHeight: Math.max(120, viewportHeight - 64),
+            autoPan: true,
+            keepInView: true,
+            autoPanPadding: [16, 16]
+          });
+          layer.on('click', () => showNeighborLinks(feature, geojson.features));
+          layer.on('popupopen', event => {
+            if (activeFeatureApp) activeFeatureApp.unmount();
+            activeFeatureApp = createApp(SiteFeaturePopup, {
+              siteId: String(feature.properties.site_id),
+              apiBaseUrl: API_BASE_URL,
+              searchQuery: searchQuery.value,
+              layoutUpdate: () => nextTick(() => {
+                if (event.popup.isOpen()) event.popup.update();
+              })
+            });
+            activeFeatureApp.mount(event.popup.getContent());
+            nextTick(() => event.popup.update());
+          });
+          layer.on('popupclose', () => {
+            if (activeFeatureApp) {
+              activeFeatureApp.unmount();
+              activeFeatureApp = null;
+            }
+            neighborLayer.value.clearLayers();
+          });
         }
       }).addTo(sitesLayer.value);
 
@@ -333,9 +451,23 @@ export default {
         const bounds = geoJsonLayer.getBounds();
         console.log('Zooming to bounds:', bounds);
         map.value.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+        if (searchQuery.value) geoJsonLayer.getLayers()[0].openPopup();
       } else {
         console.warn('No layers to display after filtering!');
       }
+    };
+
+    const searchSites = () => {
+      searchQuery.value = siteSearch.value.trim();
+      searchResultCount.value = null;
+      updateMap();
+    };
+
+    const clearSearch = () => {
+      siteSearch.value = '';
+      searchQuery.value = '';
+      searchResultCount.value = null;
+      updateMap();
     };
 
     /**
@@ -428,8 +560,15 @@ export default {
       error,
       filters,
       selectedCluster,
+      selectedEventType,
+      siteSearch,
+      searchQuery,
+      searchResultCount,
+      controlsOpen,
       demLayers,
       updateMap,
+      searchSites,
+      clearSearch,
       toggleHillshade,
       toggleElevation,
       updateDEMOpacity
@@ -440,18 +579,24 @@ export default {
 
 <style scoped>
 .cluster-map-container {
+  position: relative;
   display: flex;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
   width: 100%;
+  overflow: hidden;
 }
 
 .map-controls {
-  width: 300px;
-  padding: 20px;
+  flex: 0 0 clamp(250px, 24vw, 320px);
+  padding: clamp(12px, 1.5vw, 20px);
   background-color: #f5f5f5;
   overflow-y: auto;
   box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+  min-height: 0;
 }
+
+.mobile-map-toolbar { display: none; }
 
 .map-controls h3 {
   margin-top: 0;
@@ -504,6 +649,19 @@ export default {
 .filters input[type="checkbox"] {
   margin-right: 8px;
 }
+
+.addition-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 12px; color: #475569; font-size: 11px; }
+.addition-legend-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #087f5b; color: #fff; font-size: 11px; font-weight: 800; line-height: 1; }
+.event-filter { margin: 0 0 18px; padding: 12px; background: #fff; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+.event-filter label { display: block; margin-bottom: 7px; color: #333; font-size: 13px; font-weight: 600; }
+.event-filter select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white; font-size: 14px; }
+.site-search { margin: 0 0 18px; padding: 12px; background: #fff; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+.site-search label { display: block; margin-bottom: 7px; color: #333; font-size: 13px; font-weight: 600; }
+.search-row { display: flex; gap: 6px; }
+.search-row input { width: 100%; min-width: 0; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; }
+.search-row button, .clear-search { padding: 8px 10px; border: 0; border-radius: 4px; background: #334155; color: white; cursor: pointer; }
+.clear-search { margin-top: 7px; background: #64748b; font-size: 12px; }
+.search-result-count { margin-top: 7px; color: #475569; font-size: 12px; }
 
 .dem-controls {
   background: white;
@@ -588,6 +746,7 @@ export default {
 #cluster-map {
   flex: 1;
   height: 100%;
+  min-width: 0;
 }
 
 .loading {
@@ -604,6 +763,37 @@ export default {
   border-radius: 5px;
   margin-top: 10px;
 }
+
+:deep(.leaflet-popup-content) {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+:deep(.site-addition-marker) {
+  background: transparent;
+  border: 0;
+}
+
+:deep(.site-addition-icon) {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: #087f5b;
+  color: white;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, .55);
+}
+
+:deep(.site-addition-icons) { display: flex; gap: 2px; white-space: nowrap; }
+:deep(.site-addition-icon.event-site), .addition-legend-icon.event-site { background: #087f5b; }
+:deep(.site-addition-icon.event-lte), .addition-legend-icon.event-lte { background: #7c3aed; }
+:deep(.site-addition-icon.event-3g), .addition-legend-icon.event-3g { background: #2563eb; }
+:deep(.site-addition-icon.event-2g), .addition-legend-icon.event-2g { background: #d97706; }
 
 /* Popup styling */
 :deep(.site-popup) {
@@ -628,5 +818,53 @@ export default {
   background-color: #fee;
   padding: 5px;
   border-radius: 3px;
+}
+
+@media (max-width: 760px) {
+  .cluster-map-container { display: block; }
+  #cluster-map { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .mobile-map-toolbar {
+    position: absolute;
+    z-index: 1100;
+    top: max(8px, env(safe-area-inset-top));
+    left: 8px;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    pointer-events: none;
+  }
+  .mobile-map-toolbar button,
+  .mobile-map-toolbar strong {
+    pointer-events: auto;
+    border: 0;
+    border-radius: 8px;
+    padding: 9px 12px;
+    background: #fff;
+    color: #24324a;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, .2);
+    font-size: 13px;
+  }
+  .map-controls {
+    display: none;
+    position: absolute;
+    z-index: 1050;
+    top: 52px;
+    left: 8px;
+    width: min(360px, calc(100% - 16px));
+    max-height: min(58dvh, 560px);
+    padding: 12px;
+    border-radius: 10px;
+    box-shadow: 0 4px 18px rgba(15, 23, 42, .25);
+  }
+  .map-controls.controls-open { display: block; }
+  .map-controls h3 { font-size: 16px; margin-bottom: 10px; }
+  .stats-panel, .filters, .dem-controls, .event-filter, .site-search { margin-bottom: 10px; padding: 10px; }
+  .stat-item { padding: 3px 0; font-size: 12px; }
+  .filters label, .dem-controls label { margin-bottom: 6px; font-size: 12px; }
+  .cluster-selector { padding: 10px; }
+  .leaflet-popup { max-width: calc(100vw - 24px) !important; }
+  .leaflet-popup-content-wrapper { max-width: calc(100vw - 24px); }
+  .leaflet-popup-content { width: auto !important; max-width: calc(100vw - 56px); margin: 10px; }
 }
 </style>

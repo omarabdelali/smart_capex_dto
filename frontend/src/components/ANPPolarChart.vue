@@ -15,7 +15,7 @@
         <strong>Max Empty Arc:</strong> {{ maxEmptyArc }}°
       </p>
       <p class="info-item">
-        <strong>Angular Imbalance:</strong> {{ angularImbalance }}
+        <strong>Angular Uniformity:</strong> {{ angularUniformity }}
       </p>
       <p class="info-text">
         Shows neighbor distribution in 12 angular bins (30° each). 
@@ -26,7 +26,7 @@
 </template>
 
 <script>
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import {
   Chart,
   PolarAreaController,
@@ -80,8 +80,8 @@ export default {
       return props.anpData.max_empty_arc_deg?.toFixed(1) || 'N/A';
     });
     
-    const angularImbalance = computed(() => {
-      return props.anpData.angular_imbalance?.toFixed(3) || 'N/A';
+    const angularUniformity = computed(() => {
+      return props.anpData.angular_uniformity?.toFixed(3) || 'N/A';
     });
     
     /**
@@ -177,13 +177,17 @@ export default {
     watch(() => props.anpData, () => {
       createChart();
     }, { deep: true });
+
+    onBeforeUnmount(() => {
+      if (chartInstance) chartInstance.destroy();
+    });
     
     return {
       chartCanvas,
       edgeScoreDisplay,
       edgeScoreClass,
       maxEmptyArc,
-      angularImbalance
+      angularUniformity
     };
   }
 };
@@ -248,8 +252,16 @@ export default {
 
 canvas {
   max-height: 300px;
+  width: 100%;
+  max-width: 300px;
   margin: 0 auto;
   display: block;
+}
+
+@media (max-width: 480px) {
+  .anp-chart-container { padding: 10px; }
+  canvas { max-height: 250px; }
+  .chart-info { margin-top: 10px; }
 }
 
 .chart-info {

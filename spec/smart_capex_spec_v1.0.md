@@ -229,6 +229,19 @@ For each site, compute 6 cluster-level features:
 - **Key Counters**: Traffic (DL/UL), Users, PRB util, CQI, RSRP
 - **Launch Detection**: KPI-based (traffic > 0 with no prior history)
 
+#### Cell Addition Detection
+  - Current rule: evaluate each cell independently across all available MAOS KPI fields. A cell is added when every KPI was zero or absent in every available month before its first nonzero KPI month.
+  - The first available MAOS month is the observation baseline; a launch must occur strictly after it. Detect qualifying new cells even when the same technology already serves the site.
+  - Classify a whole site as `SITE_ADDED` only when every technology in its cell plan first has nonzero KPI in the same month. Otherwise classify added-cell events as `LTE_ADDED`, `3G_ADDED`, or `2G_ADDED`.
+  - The popup supports both site aggregates and per-cell monthly KPI series, with detected cells highlighted.
+- Evaluate all available monthly MAOS KPI fields per cell; any nonzero KPI is activity.
+- A cell is considered added when its first nonzero KPI month is strictly after the dataset start and all earlier KPI values were zero or absent.
+- If every technology currently present at a site has the same first active month, classify the event as `SITE_ADDED`. Otherwise classify events as `LTE_ADDED`, `3G_ADDED`, or `2G_ADDED`.
+- A technology can have a newly added cell even if it was already active through another cell.
+- Store the detected month on each added cell; a new site stores its common first-activity month.
+- The map provides distinct event icons and an event-type filter. Site and cell name searches open the matching site's popup and identify matching cells.
+- Current imported MAOS reports are LTE-only; 2G and 3G events require corresponding MAOS history.
+
 ### 5.3 Geographic Data
 All data already available in `data/geographic/`:
 - **DEM**: Copernicus 30m resolution

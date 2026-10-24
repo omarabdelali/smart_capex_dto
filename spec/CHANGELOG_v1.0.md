@@ -15,6 +15,14 @@ This changelog tracks all requirement and specification changes from v0 (initial
 - **Current**: **55 features total** in Phase 1
 - **Reason**: Building height feature excluded (see details below)
 
+## Implementation Update: Added Cell Detection
+
+- Detect a cell addition when all available monthly KPIs are zero or absent before its first nonzero KPI month; evaluate cells independently, including cells in an already active technology.
+- Classify a whole site as `SITE_ADDED` only when all cell-plan technologies first have nonzero KPI in the same month; otherwise classify qualifying cell additions by technology.
+- Provide site-aggregate, all-cell, and added-cell monthly KPI chart modes in the popup.
+- Provide an event-type map filter, technology-specific icons, and site/cell partial-name search that opens the matching site's popup.
+- The current imported report is LTE-only; 2G/3G event detection awaits matching MAOS history.
+
 ### New Model Fields
 Added three new fields to Site model for clustering support:
 1. `cluster_id` (IntegerField)
@@ -288,5 +296,3 @@ python manage.py migrate core
 
 **Version**: 1.0  
 **Date**: 2026-10-24  
-**Author**: Smart CAPEX Development Team  
-**Status**: Specification Finalized, Implementation In Progress

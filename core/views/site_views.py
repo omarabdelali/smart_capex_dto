@@ -56,6 +56,14 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
         technology = self.request.query_params.get('technology')
         if technology:
             queryset = queryset.filter(cells__technology=technology.upper()).distinct()
+
+        search_term = self.request.query_params.get('search', '').strip()
+        if search_term:
+            queryset = queryset.filter(
+                Q(site_id__icontains=search_term)
+                | Q(site_name__icontains=search_term)
+                | Q(cells__cell_name__icontains=search_term)
+            ).distinct()
         
         return queryset
     
@@ -74,9 +82,12 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
             GeoJSON FeatureCollection with site features
         """
         queryset = self.get_queryset()
+        search_term = request.query_params.get('search', '').strip()
+        if search_term:
+            queryset = queryset.order_by('site_name')[:100]
         
         # Use GeoJSON serializer
-        serializer = SiteGeoJSONSerializer(queryset, many=True)
+        serializer = SiteGeoJSONSerializer(queryset, many=True, context={'search_term': search_term})
         
         # Wrap in FeatureCollection for proper GeoJSON format
         geojson = {
@@ -200,13 +211,18 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
                 'geometric_features',
                 'clutter_features',
                 'spatial_features',
-                'anp_features'
-            ).get(site_id=site_id)
+                'anp_features',
+                'kpi_features',
+                'config_features',
+                'cluster_features'
+            ).prefetch_related('cells').get(site_id=site_id)
         except Site.DoesNotExist:
             return Response(
                 {'error': f'Site {site_id} not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        serializer = SiteWithFeaturesSerializer(site)
+        serializer = SiteWithFeaturesSerializer(
+            site, context={'search_term': request.query_params.get('search', '').strip()}
+        )
         return Response(serializer.data)
