@@ -71,65 +71,131 @@ class CellPlanLoader:
         
         sites_created = 0
         cells_created = 0
+        site_errors = 0
+        cell_errors = 0
+        
+        print(f"\nProcessing {len(site_groups)} site groups...")
         
         for (site_id, site_name), site_cells in site_groups:
-            # Get site coordinates (use first cell's coordinates)
-            first_cell = site_cells.iloc[0]
-            lat = first_cell['latitude']
-            lon = first_cell['longitude']
-            
-            # Create or update site
-            site, created = Site.objects.get_or_create(
-                site_id=str(site_id),
-                defaults={
-                    'site_name': site_name,
-                    'latitude': lat,
-                    'longitude': lon,
-                    'location': f'POINT({lon} {lat})',  # WKT format for CharField
-                }
-            )
-            
-            if created:
-                sites_created += 1
-            
-            # Create cells for this site
-            for _, cell_row in site_cells.iterrows():
-                # Map band/frequency
-                band = str(cell_row.get('band', ''))
-                frequency = float(cell_row.get('frequency', 0))
+            try:
+                # Get site coordinates (use first cell's coordinates)
+                first_cell = site_cells.iloc[0]
+                lat = first_cell['latitude']
+                lon = first_cell['longitude']
                 
-                # Get technology
-                technology = cell_row.get('technology', '4G')
-                if technology not in ['2G', '3G', '4G']:
-                    technology = '4G'  # Default to 4G
+                # Validate coordinates
+                if pd.isna(lat) or pd.isna(lon):
+                    print(f"Warning: Site {site_id} has invalid coordinates (lat={lat}, lon={lon}), skipping")
+                    site_errors += 1
+                    continue
                 
-                # Get antenna height
-                antenna_height = float(cell_row.get('antenna_height', 25))  # Default 25m
+                # Validate site_name (handle NaN)
+                if pd.isna(site_name):
+                    site_name = f"Site_{site_id}"
+                    print(f"Warning: Site {site_id} has no name, using {site_name}")
                 
-                # Create cell
-                cell, created = Cell.objects.get_or_create(
-                    cell_id=str(cell_row['cell_id']),
+                # Create or update site
+                site, created = Site.objects.get_or_create(
+                    site_id=str(site_id),
                     defaults={
-                        'site': site,
-                        'cell_name': cell_row['cell_name'],
-                        'cgi': str(cell_row.get('cgi', '')),
-                        'technology': technology,
-                        'frequency': frequency,
-                        'band': band,
-                        'bandwidth_mhz': self._get_bandwidth(technology, band),
-                        'azimuth': float(cell_row.get('azimuth', 0)),
-                        'antenna_height_m': antenna_height,
+                        'site_name': str(site_name),
+                        'latitude': float(lat),
+                        'longitude': float(lon),
+                        'location': f'POINT({lon} {lat})',  # WKT format for CharField
                     }
                 )
                 
                 if created:
-                    cells_created += 1
+                    sites_created += 1
+                    if sites_created % 500 == 0:
+                        print(f"  Created {sites_created} sites so far...")
+                
+            except Exception as e:
+                print(f"Error creating site {site_id}: {e}")
+                site_errors += 1
+                continue
+            
+            # Create cells for this site
+            for _, cell_row in site_cells.iterrows():
+                try:
+                    # Validate cell_id
+                    cell_id = cell_row.get('cell_id')
+                    if pd.isna(cell_id):
+                        print(f"Warning: Cell with no ID for site {site_id}, skipping")
+                        cell_errors += 1
+                        continue
+                    
+                    # Map band/frequency
+                    band = str(cell_row.get('band', ''))
+                    frequency = float(cell_row.get('frequency', 0)) if not pd.isna(cell_row.get('frequency')) else 0.0
+                    
+                    # Get technology
+                    technology = cell_row.get('technology', '4G')
+                    if technology not in ['2G', '3G', '4G']:
+                        technology = '4G'  # Default to 4G
+                    
+                    # Get antenna height
+                    antenna_height_val = cell_row.get('antenna_height', 25)
+                    antenna_height = float(antenna_height_val) if not pd.isna(antenna_height_val) else 25.0
+                    
+                    # Get cell_name
+                    cell_name = cell_row.get('cell_name', f"Cell_{cell_id}")
+                    if pd.isna(cell_name):
+                        cell_name = f"Cell_{cell_id}"
+                    
+                    # Get azimuth
+                    azimuth_val = cell_row.get('azimuth', 0)
+                    azimuth = float(azimuth_val) if not pd.isna(azimuth_val) else 0.0
+                    
+                    # Create cell
+                    cell, created = Cell.objects.get_or_create(
+                        cell_id=str(cell_id),
+                        defaults={
+                            'site': site,
+                            'cell_name': str(cell_name),
+                            'cgi': str(cell_row.get('cgi', '')),
+                            'technology': technology,
+                            'frequency': frequency,
+                            'band': band,
+                            'bandwidth_mhz': self._get_bandwidth(technology, band),
+                            'azimuth': azimuth,
+                            'antenna_height_m': antenna_height,
+                        }
+                    )
+                    
+                    if created:
+                        cells_created += 1
+                        if cells_created % 5000 == 0:
+                            print(f"  Created {cells_created} cells so far...")
+                
+                except Exception as e:
+                    print(f"Error creating cell {cell_row.get('cell_id', 'UNKNOWN')} for site {site_id}: {e}")
+                    cell_errors += 1
+                    continue
         
-        print(f"Created {sites_created} sites and {cells_created} cells")
+        total_sites_db = Site.objects.count()
+        total_cells_db = Cell.objects.count()
+        
+        print(f"\n{'='*60}")
+        print(f"LOADING SUMMARY")
+        print(f"{'='*60}")
+        print(f"New sites created: {sites_created}")
+        print(f"New cells created: {cells_created}")
+        print(f"Site errors: {site_errors}")
+        print(f"Cell errors: {cell_errors}")
+        print(f"Total sites in database: {total_sites_db}")
+        print(f"Total cells in database: {total_cells_db}")
+        
+        if sites_created == 0 and total_sites_db > 0:
+            print(f"\n✓ All {total_sites_db} sites already exist in database (no new records created)")
+        
+        print(f"{'='*60}\n")
         
         result: Dict = {
             'sites': sites_created,
             'cells': cells_created,
+            'site_errors': site_errors,
+            'cell_errors': cell_errors,
             'total_sites': Site.objects.count(),
             'total_cells': Cell.objects.count(),
         }

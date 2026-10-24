@@ -78,7 +78,13 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
         # Use GeoJSON serializer
         serializer = SiteGeoJSONSerializer(queryset, many=True)
         
-        return Response(serializer.data)
+        # Wrap in FeatureCollection for proper GeoJSON format
+        geojson = {
+            'type': 'FeatureCollection',
+            'features': serializer.data
+        }
+        
+        return Response(geojson)
     
     @action(detail=False, methods=['get'])
     def cluster_stats(self, request):

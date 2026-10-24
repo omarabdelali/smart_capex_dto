@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cluster Map Debug</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        #map { height: 600px; width: 100%; }
+        .debug-panel { padding: 20px; background: #f0f0f0; margin-bottom: 10px; }
+        .debug-panel pre { background: white; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="debug-panel">
+        <h2>Cluster Map Debug Tool</h2>
+        <button onclick="testAPI()">Test API</button>
+        <button onclick="testLeaflet()">Test Leaflet</button>
+        <button onclick="testFullPipeline()">Test Full Pipeline</button>
+        <div id="output"></div>
+    </div>
+    <div id="map"></div>
+
+    <script>
+        let map;
+        let sitesLayer;
+
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([34.0, 9.0], 7);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            sitesLayer = L.layerGroup().addTo(map);
+            log('Map initialized');
+        }
+
+        function log(message, data = null) {
+            const output = document.getElementById('output');
+            const entry = document.createElement('div');
+            entry.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            if (data) {
+                const pre = document.createElement('pre');
+                pre.textContent = JSON.stringify(data, null, 2).substring(0, 500);
+                entry.appendChild(pre);
+            }
+            output.appendChild(entry);
+            console.log(message, data);
+        }
+
+        async function testAPI() {
+            log('Testing API endpoint...');
+            try {
+                const response = await fetch('http://localhost:8000/api/sites/clusters/?cluster_id=0');
+                const data = await response.json();
+                log(`API Response Status: ${response.status}`);
+                log(`Response Type: ${data.type}`);
+                log(`Features Count: ${data.features?.length}`);
+                log('First Feature:', data.features?.[0]);
+                return data;
+            } catch (error) {
+                log(`API Error: ${error.message}`);
+                return null;
+            }
+        }
+
+        async function testLeaflet() {
+            log('Testing Leaflet rendering...');
+            sitesLayer.clearLayers();
+
+            // Create manual test markers
+            const testSites = [
+                { lat: 36.8, lon: 10.1, name: 'Test Site 1' },
+                { lat: 35.0, lon: 9.5, name: 'Test Site 2' },
+                { lat: 33.5, lon: 10.5, name: 'Test Site 3' }
+            ];
+
+            testSites.forEach(site => {
+                const marker = L.circleMarker([site.lat, site.lon], {
+                    radius: 8,
+                    fillColor: '#00FF00',
+                    color: '#000',
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.7
+                }).bindPopup(site.name);
+                
+                sitesLayer.addLayer(marker);
+                log(`Created test marker: ${site.name} at [${site.lat}, ${site.lon}]`);
+            });
+
+            log(`Total test markers: ${sitesLayer.getLayers().length}`);
+            
+            // Zoom to test markers
+            const bounds = sitesLayer.getBounds();
+            map.fitBounds(bounds, { padding: [50, 50] });
+            log('Zoomed to test markers');
+        }
+
+        async function testFullPipeline() {
+            log('Testing full pipeline...');
+            sitesLayer.clearLayers();
+
+            // Fetch data
+            const geojson = await testAPI();
+            if (!geojson || !geojson.features || geojson.features.length === 0) {
+                log('No GeoJSON data received');
+                return;
+            }
+
+            log(`Processing ${geojson.features.length} features...`);
+
+            // Filter: show only interior sites from cluster 0
+            const filteredFeatures = geojson.features.filter(f => 
+                f.properties.cluster_id === 0 && 
+                !f.properties.is_cluster_edge
+            );
+            log(`After filtering: ${filteredFeatures.length} interior sites in cluster 0`);
+
+            // Try adding with L.geoJSON
+            try {
+                const geoJsonLayer = L.geoJSON(geojson, {
+                    filter: (feature) => {
+                        return feature.properties.cluster_id === 0 && 
+                               !feature.properties.is_cluster_edge;
+                    },
+                    pointToLayer: (feature, latlng) => {
+                        log(`Creating marker for ${feature.properties.site_name} at lat=${latlng.lat}, lon=${latlng.lng}`);
+                        return L.circleMarker(latlng, {
+                            radius: 6,
+                            fillColor: '#00FF00',
+                            color: '#000',
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.7
+                        });
+                    },
+                    onEachFeature: (feature, layer) => {
+                        const coords = feature.geometry.coordinates;
+                        layer.bindPopup(`
+                            <strong>${feature.properties.site_name}</strong><br>
+                            Coords: ${coords[1].toFixed(4)}, ${coords[0].toFixed(4)}<br>
+                            Cluster: ${feature.properties.cluster_id}
+                        `);
+                    }
+                });
+
+                geoJsonLayer.addTo(sitesLayer);
+                log(`Leaflet layers created: ${geoJsonLayer.getLayers().length}`);
+
+                if (geoJsonLayer.getLayers().length > 0) {
+                    const bounds = geoJsonLayer.getBounds();
+                    log('Bounds:', {
+                        north: bounds.getNorth(),
+                        south: bounds.getSouth(),
+                        east: bounds.getEast(),
+                        west: bounds.getWest()
+                    });
+                    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+                    log('Zoomed to features');
+                } else {
+                    log('WARNING: No layers created!');
+                }
+            } catch (error) {
+                log(`GeoJSON processing error: ${error.message}`);
+                console.error(error);
+            }
+        }
+
+        // Initialize on load
+        window.onload = () => {
+            initMap();
+            log('Debug tool ready');
+        };
+    </script>
+</body>
+</html>
