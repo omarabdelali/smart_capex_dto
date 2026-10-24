@@ -4,7 +4,7 @@ Run with: python manage.py load_and_cluster
 """
 
 from django.core.management.base import BaseCommand
-from src.models.preprocessing.cellplan_loader import CellPlanLoader
+from services.models.preprocessing.cellplan_loader import CellPlanLoader
 from core.models import Site
 
 

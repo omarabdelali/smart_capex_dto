@@ -74,7 +74,7 @@ class ANPComputer:
             return self._empty_anp()
         
         # Compute bearings and distances if not provided
-        from src.utils.geo_utils import compute_bearing, haversine
+        from services.utils.geo_utils import compute_bearing, haversine
         
         neighbors = []
         for i, (lat, lon) in enumerate(neighbor_coords):
@@ -175,7 +175,7 @@ class ANPComputer:
         max_empty_arc_deg = self._compute_max_empty_arc(bearings)
         
         # Circular statistics
-        from src.utils.geo_utils import circular_std
+        from services.utils.geo_utils import circular_std
         bearing_stddev_deg = circular_std(bearings)
         
         # Coverage asymmetry (difference between longest and shortest arcs)

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from django.conf import settings
 from core.models import Site, Cell
-from src.models.preprocessing.site_clustering import SiteClusteringPipeline, Site as ClusterSite
+from services.models.preprocessing.site_clustering import SiteClusteringPipeline, Site as ClusterSite
 
 
 class CellPlanLoader:

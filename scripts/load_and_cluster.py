@@ -10,8 +10,8 @@ import django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'smart_capex_backend.settings')
 django.setup()
 
-from src.models.preprocessing.cellplan_loader import CellPlanLoader
-from src.models.preprocessing.site_clustering import SiteClusteringPipeline
+from services.models.preprocessing.cellplan_loader import CellPlanLoader
+from services.models.preprocessing.site_clustering import SiteClusteringPipeline
 from core.models import Site
 
 print("=" * 60)

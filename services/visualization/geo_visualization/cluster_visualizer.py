@@ -22,7 +22,7 @@ import logging
 from shapely.geometry import Polygon
 import json
 
-from src.models.preprocessing.site_clustering import Site, ClusterResult
+from services.models.preprocessing.site_clustering import Site, ClusterResult
 
 logger = logging.getLogger(__name__)
 

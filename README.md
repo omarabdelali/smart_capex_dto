@@ -24,32 +24,75 @@ The system distinguishes **edge sites** (coverage extension) from **infill sites
 
 ## 🏗️ Architecture
 
-**MVC Modular Design:**
+**Django MVT + Services Layer (MVC Pattern):**
+
+Smart CAPEX follows a strict Model-View-Controller architecture with clear separation of concerns:
 
 ```
 project_smart_capex/
-├── src/
-│   ├── models/              # Business logic
-│   │   ├── preprocessing/   # Launch detection, DiD cleaning
-│   │   ├── features/        # ANP, geography, spatial, config
+├── core/                    # Django app (Models + Views)
+│   ├── models/              # DATABASE MODELS ONLY
+│   │   ├── site.py          # Site model
+│   │   ├── cell.py          # Cell model
+│   │   ├── features.py      # Feature models (Config, Geo, Clutter, Spatial, ANP, Cluster)
+│   │   ├── kpi.py           # KPI models (PreLaunch, MAOS)
+│   │   └── __init__.py      # Public exports
+│   ├── views/               # API ENDPOINTS ONLY
+│   │   ├── site_views.py    # Site API (SiteViewSet)
+│   │   ├── cell_views.py    # Cell API (CellViewSet)
+│   │   └── __init__.py      # Public exports
+│   ├── serializers/         # DATA TRANSFORMATION
+│   │   ├── site_serializers.py   # Site, GeoJSON serializers
+│   │   ├── cell_serializers.py   # Cell serializer
+│   │   └── __init__.py      # Public exports
+│   ├── management/commands/ # Django commands
+│   ├── admin.py             # Admin site config
+│   └── urls.py              # URL routing
+├── services/                # BUSINESS LOGIC ONLY
+│   ├── models/              # Data processing & ML
+│   │   ├── preprocessing/   # Launch detection, DiD cleaning, clustering
+│   │   ├── features/        # ANP, geography, spatial, config extraction
 │   │   ├── similarity/      # Gower distance, hierarchical CBR
 │   │   └── prediction/      # Kernel weights, bootstrap CI
-│   ├── views/               # Visualization
-│   │   ├── geo_visualization/  # Folium maps
-│   │   └── api_responses/      # JSON formatting
-│   ├── controllers/         # Orchestration
-│   │   ├── data_pipeline/   # Training/validation workflows
-│   │   └── prediction_api/  # REST endpoints
-│   └── utils/               # Shared utilities
-├── data/
+│   ├── visualization/       # Map rendering
+│   │   └── geo_visualization/  # Folium map generation
+│   └── utils/               # Shared utilities (geo, config)
+├── frontend/                # Vue.js frontend
+│   ├── src/
+│   │   ├── components/      # Vue components (ClusterMapView)
+│   │   ├── App.vue          # Main app
+│   │   └── main.js          # Entry point
+│   └── index.html           # HTML template
+├── smart_capex_backend/     # Django project settings
+│   ├── settings.py          # Project configuration
+│   └── urls.py              # Root URL config
+├── data/                    # Data storage
 │   ├── cellplan/            # Cell plan history
 │   ├── geographic/          # DEM, clutter, buildings
 │   └── maos/                # Huawei MAOS counters
 ├── spec/                    # Detailed specification
 ├── tests/                   # Test suite
 ├── notebooks/               # Jupyter notebooks
+├── scripts/                 # Utility scripts
+├── .clinerules/             # Development guidelines
 └── .tracking/               # Progress tracking
 ```
+
+### Architecture Principles
+
+**Three-Layer Separation:**
+1. **Models (core/models/)** - Django ORM models, database schema ONLY
+2. **Views (core/views/)** - REST API endpoints, HTTP request/response ONLY  
+3. **Services (services/)** - ALL business logic (data loading, feature engineering, clustering, similarity, prediction)
+
+**Key Rules:**
+- ❌ NO business logic in models or views
+- ✅ ALL data processing, calculations, ML algorithms in services/
+- ✅ Views call services layer for business logic
+- ✅ Models define database structure only
+- ✅ Clean imports: Models → Serializers → Views → Services (one-way)
+
+See `.clinerules/mvc-architecture.md` for detailed architecture guidelines.
 
 ---
 
