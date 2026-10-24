@@ -1,0 +1,76 @@
+# ==========================================
+# Python & Virtual Environments
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ==========================================
+# Jupyter Notebooks
+# ==========================================
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ==========================================
+# Machine Learning / AI Specific
+# ==========================================
+# Model weights and checkpoints (Too large for GitHub)
+*.pt
+*.pth
+*.onnx
+*.h5
+*.pb
+*.ckpt
+*.bin
+checkpoints/
+saved_models/
+
+# Datasets (Usually too large for GitHub)
+data/
+datasets/
+raw_data/
+processed_data/
+
+# Logs and Tensorboard
+logs/
+runs/
+tensorboard/
+events.out.tfevents.*
+
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
+.env
+.env.local
+*.pem
+api_keys.json
+
+# ==========================================
+# IDEs and Editors
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ==========================================
+# OS Generated
+# ==========================================
+.DS_Store
+Thumbs.db
+data
+docs
+notebooks
+db.*
+
+
+db.sqlite3

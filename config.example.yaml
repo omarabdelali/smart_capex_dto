@@ -1,0 +1,177 @@
+# Smart CAPEX Phase 1 - Configuration File
+# Copy this file to config.yaml and customize for your environment
+
+# Project metadata
+project:
+  name: "Smart CAPEX Phase 1"
+  version: "0.1.0"
+  scope: "2G/3G/4G"
+  
+# Data paths (relative to project root)
+data:
+  cellplan:
+    path: "data/cellplan/"
+    file: "Cell_Plan_Data_21102026.xlsx"
+  
+  maos:
+    path: "data/maos/"
+    daily_pattern: "smart_capex_LTE_daily_Query_Result_*/"
+  
+  geographic:
+    dem_path: "data/geographic/dem/"
+    worldcover_path: "data/geographic/worldcover/"
+    osm_path: "data/geographic/osm/"
+    ghsl_path: "data/geographic/ghsl/"
+    processed_path: "data/geographic/processed/"
+
+# Feature weights (must sum to 1.0)
+feature_weights:
+  configuration: 0.28
+  prelaunch: 0.27
+  spatial: 0.20  # Includes ANP
+  clutter: 0.13
+  geometry: 0.05
+  cluster: 0.05
+
+# ANP (Angular Neighborhood Profile) parameters
+anp:
+  tier1_radius_m: 2000
+  tier2_radius_m: 5000
+  angular_bins: 12  # 360° / 12 = 30° per bin
+  sector_boresights: [0, 120, 240]  # degrees
+
+# Launch detection parameters
+launch_detection:
+  kpi_threshold: 0  # traffic > 0
+  pre_window_days: 30
+  post_window_days: 90
+  min_history_days: 180
+
+# DiD (Difference-in-Differences) parameters
+did:
+  control_pool_size: 50
+  similarity_threshold: 0.5
+
+# Similarity computation
+similarity:
+  metric: "gower"  # mixed numeric/categorical
+  bandwidth_method: "median"  # for kernel weights
+  
+# Hierarchical CBR filter
+hierarchical_filter:
+  min_pool_size: 3
+  band_overlap_threshold: 0.5  # 50% overlap
+  relaxation_enabled: true
+
+# Prediction parameters
+prediction:
+  kernel_type: "gaussian"
+  bootstrap_iterations: 1000
+  confidence_level: 0.90  # 90% CI (5th to 95th percentile)
+  top_k_cases: 5
+  local_linear_cases: 15
+
+# Validation parameters
+validation:
+  method: "leave_one_out"
+  metrics: ["mae", "mape", "r2"]
+  ablation_test: true
+  
+  targets:
+    delta_coverage:
+      mae: 0.03
+      mape: 0.15
+      r2: 0.65
+    delta_prb:
+      mae: 4.0
+      mape: 0.20
+      r2: 0.55
+    delta_rrc:
+      mae: 15.0
+      mape: 0.25
+      r2: 0.50
+    npv:
+      mae: 20000
+      mape: 0.25
+      r2: 0.60
+
+# Geographic processing
+geographic:
+  coordinate_system: "EPSG:4326"  # WGS84
+  dem:
+    resolution_m: 30
+    vertical_accuracy_m: 2
+  worldcover:
+    resolution_m: 10
+    clutter_mapping:
+      urban: 5
+      suburban: 5
+      rural: [1, 2, 3, 4]
+      water: 8
+      forest: 1
+  buildings:
+    buffer_1km: 1000
+    height_defaults:
+      urban: 12.0
+      suburban: 8.0
+      rural: 6.0
+      forest: 0.0
+      water: 0.0
+
+# Feature ranges (for normalization) - computed from training data
+# These will be updated after first training run
+feature_ranges:
+  antenna_height_m: 45
+  z_antenna_m: 180
+  terrain_slope_deg: 25
+  terrain_roughness_m: 40
+  clutter_entropy_2km: 1.5
+  pct_building_area_1km: 90
+  avg_building_height_m: 40
+  dist_nearest_site_m: 2950
+  n_sites_1km: 10
+  n_sites_2km: 25
+  n_sites_3km: 50
+  n_tier1: 20
+  n_tier2: 60
+  t1_angular_entropy: 3.58
+  t1_angular_gap_deg: 360
+  avg_prb_pre: 100
+  avg_rrc_pre: 800
+  avg_throughput_pre: 80
+  avg_latency_pre: 95
+  dl_traffic_pre_gb_day: 800
+  traffic_ratio_pre: 10
+  cluster_radius_m: 3500
+
+# API configuration
+api:
+  host: "0.0.0.0"
+  port: 8000
+  debug: false
+  cors_enabled: true
+  rate_limit: 100  # requests per minute
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/smart_capex.log"
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
+
+# Visualization
+visualization:
+  map_center: [36.8, 10.2]  # Tunisia center (lat, lon)
+  map_zoom: 8
+  edge_score_colormap:
+    infill: "#3388ff"  # blue
+    edge: "#ff3333"    # red
+    threshold: 0.5
+
+# Performance
+performance:
+  n_jobs: -1  # use all CPU cores
+  chunk_size: 1000
+  cache_enabled: true
+  cache_dir: ".cache/"

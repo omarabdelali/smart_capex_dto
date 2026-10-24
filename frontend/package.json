@@ -1,0 +1,25 @@
+{
+  "name": "smart-capex-frontend",
+  "version": "1.0.0",
+  "description": "Smart CAPEX Phase 1 - Vue.js Frontend",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore"
+  },
+  "dependencies": {
+    "vue": "^3.3.4",
+    "vue-router": "^4.2.4",
+    "axios": "^1.5.0",
+    "leaflet": "^1.9.4",
+    "pinia": "^2.1.6"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.3.4",
+    "vite": "^4.4.9",
+    "eslint": "^8.49.0",
+    "eslint-plugin-vue": "^9.17.0"
+  }
+}

@@ -1,0 +1,60 @@
+Feature Group,Feature Name,Type,Weight,Range/Values,Description,Source,Formula/Calculation
+Configuration,event_type,categorical,0.28,NEW_SITE|TECH_ADD|BAND_ADD|SECTOR_ADD|CAPACITY_ADD,Type of launch event,Launch Detection,Detected from cell plan changes
+Configuration,tech_added,categorical,0.28,2G|3G|4G,Technology being added,Cell plan diff,Comparison of cell plan before/after
+Configuration,tech_before,binary vector,0.28,"[2G,3G,4G]",Technologies active before launch,Cells active at T-30d,Binary vector of active techs
+Configuration,tech_after,binary vector,0.28,"[2G,3G,4G]",Technologies active after launch,tech_before ∪ tech_added,Union of before and added
+Configuration,bands_added,binary vector,0.28,"[GSM900,GSM1800,UMTS900,UMTS2100,B20,B3,B1]",Frequency bands being added,Cell plan diff,Binary vector of added bands
+Configuration,sector_count_after,integer,0.28,NEW_SITE|TECH_ADD|BAND_ADD|SECTOR_ADD|CAPACITY_ADD,Number of sectors after launch,len(distinct azimuth),Count of unique azimuths
+Configuration,cells_per_sector_after,float,0.28,1-8,Average cells per sector,total_cells / sectors,Total cells divided by sectors
+Configuration,antenna_height_m,float,0.28,10-55,Physical antenna height,Cell plan,Height above ground level
+Configuration,total_bw_after_mhz,float,0.28,5-100,Total bandwidth after launch,Σ cell.bandwidth_mhz,Sum of all cell bandwidths
+Configuration,total_capacity_after_mbps,float,0.28,50-2000,Total theoretical capacity,Σ bw × SE × MIMO_layers,Calculated from BW and MIMO
+Geometry,z_antenna_m,float,0.05,30-200,Antenna elevation above sea level,DEM(x y) + antenna_height_m,Ground elevation + antenna height
+Geometry,terrain_slope_deg,float,0.05,0-25,Median terrain slope,median(arctan(∇DEM)) in 200m,Slope from DEM gradient
+Geometry,terrain_roughness_m,float,0.05,0-40,Terrain elevation variability,std(DEM) in 1km,Standard deviation of elevation
+Geometry,terrain_aspect_deg,float (circular),0.05,0-360,Direction of terrain slope,atan2(−dH/dy dH/dx) mod 360,Compass direction of slope
+Clutter,dominant_clutter,categorical,0.13,urban|suburban|rural|water|forest,Most common land use type,Mode of clutter raster in 500m,Most frequent clutter class
+Clutter,clutter_entropy_2km,float,0.13,0-1.5,Diversity of land use types,−Σ p_c log2(p_c) in 2km,Shannon entropy of clutter
+Clutter,pct_building_area_1km,float,0.13,0-90,Percentage covered by buildings,Σ building_area / area_buffer × 100,Building footprint percentage
+Clutter,avg_building_height_m,float,0.13,0-40,Average building height,Mean height in 1km,Mean of building heights
+Spatial,dist_nearest_site_m,float,0.20,50-2950,Distance to closest site,min(haversine to all sites),Haversine distance to nearest
+Spatial,n_sites_1km,integer,0.20,0-10,Sites within 1km radius,Count in 1km,Count of sites in buffer
+Spatial,n_sites_2km,integer,0.20,0-25,Sites within 2km radius,Count in 2km,Count of sites in buffer
+Spatial,n_sites_3km,integer,0.20,0-50,Sites within 3km radius,Count in 3km,Count of sites in buffer
+Spatial,n_2g_sites_2km,integer,0.20,0-25,2G sites within 2km,Sites with 2G in 2km,Count of 2G-enabled sites
+Spatial,n_3g_sites_2km,integer,0.20,0-25,3G sites within 2km,Sites with 3G in 2km,Count of 3G-enabled sites
+Spatial,n_4g_sites_2km,integer,0.20,0-25,4G sites within 2km,Sites with 4G in 2km,Count of 4G-enabled sites
+Spatial,neighbor_avg_antenna_height_m,float,0.20,10-55,Average height of neighbors,Mean of neighbors,Mean antenna height nearby
+Spatial (ANP),n_tier1,integer,0.20,0-50,Neighbors within 2km,Sites with distance ≤ 2000 m,Count in tier 1
+Spatial (ANP),n_tier2,integer,0.20,0-100,Neighbors 2-5km away,Sites with 2000 < distance ≤ 5000 m,Count in tier 2
+Spatial (ANP),t1_to_t2_ratio,float,0.20,0-2,Ratio of near to far neighbors,n_tier1 / max(n_tier2 1),Tier 1 divided by tier 2
+Spatial (ANP),t1_nearest_m,float,0.20,50-2000,Distance to nearest tier-1 site,Min distance to tier-1 site,Minimum haversine distance
+Spatial (ANP),t1_mean_distance_m,float,0.20,100-2000,Average distance to tier-1 sites,Mean distance to tier-1 sites,Mean haversine distance
+Spatial (ANP),t1_angular_entropy,float,0.20,0-3.58,Uniformity of neighbor distribution,−Σ p_b log2(p_b),Shannon entropy of 12 bins
+Spatial (ANP),t1_angular_gap_deg,float,0.20,0-360,Largest empty arc around site,Largest contiguous empty arc,Maximum consecutive empty bins
+Spatial (ANP),t1_dominant_concentration,float,0.20,0-1,Fraction in most populated direction,max(bin) / total,Highest bin proportion
+Spatial (ANP),t1_isotropy,float,0.20,0-1,Uniformity metric,1 − CV(bins),1 minus coefficient of variation
+Spatial (ANP),edge_score,float,0.20,0-1,Edge vs infill classification,1 − entropy / log2(12),Normalized entropy inverse
+Spatial (ANP),sector_0_count,integer,0.20,0-50,Neighbors in sector 0 direction,Neighbors assigned to sector 0,Count near 0° boresight
+Spatial (ANP),sector_1_count,integer,0.20,0-50,Neighbors in sector 1 direction,Neighbors assigned to sector 1,Count near 120° boresight
+Spatial (ANP),sector_2_count,integer,0.20,0-50,Neighbors in sector 2 direction,Neighbors assigned to sector 2,Count near 240° boresight
+Spatial (ANP),sector_empty_count,integer,0.20,0-3,Number of sectors with no neighbors,Sectors with 0 neighbors,Count of empty sectors
+Spatial (ANP),sector_imbalance,integer,0.20,0-50,Difference between most/least loaded,max − min across sectors,Max minus min sector count
+Pre-launch,coverage_ratio_pre,float,0.27,0-1,Coverage ratio before launch,Σ 𝟙(RSRP>−110) / N,Fraction with good signal
+Pre-launch,coverage_gap_pre,float,0.27,0-1,Coverage gap before launch,1 − coverage_ratio_pre,Inverse of coverage ratio
+Pre-launch,avg_prb_pre,float,0.27,0-100,Average PRB utilization,Weighted mean PRB over cells,Physical resource block usage
+Pre-launch,avg_rrc_pre,float,0.27,0-800,Average connected users,Mean RRC connected users,RRC connection count
+Pre-launch,avg_throughput_pre,float,0.27,0-80,Average user throughput,Mean DL user throughput (Mbps),Downlink throughput per user
+Pre-launch,avg_latency_pre,float,0.27,0-95,Average latency,Mean P95 latency (ms),95th percentile latency
+Pre-launch,dl_traffic_pre_gb_day,float,0.27,0-800,Daily downlink traffic,Σ DL traffic (GB/day),Total DL traffic volume
+Pre-launch,traffic_density_mbb_pre,float,0.27,0-1000,Mobile broadband traffic density,KDE density (GB/day/km²),MBB traffic per area
+Pre-launch,traffic_density_fwa_pre,float,0.27,0-1000,Fixed wireless traffic density,KDE density,FWA traffic per area
+Pre-launch,traffic_density_box_pre,float,0.27,0-1000,FDD Boxies traffic density,KDE density,Box traffic per area
+Pre-launch,traffic_ratio_pre,float,0.27,0-10,Demand to capacity ratio,mean(demand/capacity),Load ratio
+Pre-launch,gap_score_pre,float,0.27,0-10,Combined gap metric,α·cov_gap + β·traffic_ratio,Weighted gap score
+Cluster,cluster_size,integer,0.05,3-100,Number of sites in cluster,Count of sites in cluster,Sites in same cluster
+Cluster,cluster_radius_m,float,0.05,500-3500,Cluster geographic extent,1.5 × median pairwise distance,Cluster spread metric
+Cluster,cluster_pct_4g,float,0.05,0-100,Percentage of 4G cells in cluster,Fraction of 4G cells,4G penetration in cluster
+Cluster,cluster_pct_3g,float,0.05,0-100,Percentage of 3G cells in cluster,Fraction of 3G cells,3G penetration in cluster
+Cluster,cluster_pct_2g,float,0.05,0-100,Percentage of 2G cells in cluster,Fraction of 2G cells,2G penetration in cluster
+Cluster,site_rank_in_cluster,integer,0.05,1-100,Chronological launch order,Chronological rank,Launch sequence number
