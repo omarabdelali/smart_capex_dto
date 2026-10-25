@@ -411,9 +411,9 @@ export default {
 
 <style scoped>
 .site-feature-popup {
-  width: min(500px, calc(100vw - 56px));
+  width: 100%;
   min-width: 0;
-  max-width: 100%;
+  max-width: none;
   overflow-wrap: anywhere;
 }
 
@@ -696,7 +696,6 @@ export default {
 }
 
 @media (max-width: 480px) {
-  .site-feature-popup { width: calc(100vw - 56px); }
   .site-header { padding: 11px; }
   .site-header h3 { font-size: 16px; }
   .tab-pane { padding: 10px; }

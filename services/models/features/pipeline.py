@@ -3,7 +3,7 @@ Feature Extraction Pipeline for Smart CAPEX.
 Orchestrates all feature extractors and saves to database.
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Callable
 import logging
 from datetime import datetime
 
@@ -79,7 +79,8 @@ class FeatureExtractionPipeline:
         self,
         cluster_id: Optional[int] = None,
         site_ids: Optional[List[str]] = None,
-        skip_existing: bool = True
+        skip_existing: bool = True,
+        progress_callback: Optional[Callable[[Dict], None]] = None,
     ) -> Dict[str, int]:
         """
         Extract all features for sites and save to database.
@@ -158,6 +159,8 @@ class FeatureExtractionPipeline:
         
         # Process each site
         for idx, site in enumerate(sites, 1):
+            if progress_callback and (idx == 1 or idx % 10 == 0):
+                progress_callback({'stage': 'features', 'processed': idx - 1, 'total': stats['total'], 'current_site': site.site_id})
             try:
                 logger.info(f"Processing site {site.site_id} ({idx}/{stats['total']})...")
                 
@@ -239,6 +242,9 @@ class FeatureExtractionPipeline:
                 stats['failed'] += 1
                 logger.error(f"✗ Failed to extract features for site {site.site_id}: {e}")
         
+        if progress_callback:
+            progress_callback({'stage': 'features', 'processed': stats['total'], 'total': stats['total'], 'current_site': None})
+
         # Log summary
         logger.info(f"Feature extraction complete:")
         logger.info(f"  Total sites: {stats['total']}")

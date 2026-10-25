@@ -5,8 +5,8 @@ Site-related Django REST Framework views.
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Count, Q
-from core.models import Site
+from django.db.models import Avg, Count, Q, Sum
+from core.models import Cell, ClusterFeatures, MAOSMonthlyKPI, Site
 from core.serializers import SiteSerializer, SiteGeoJSONSerializer, SiteWithFeaturesSerializer
 
 
@@ -19,6 +19,7 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
     - Retrieve single site (GET /api/sites/{site_id}/)
     - Get clustered sites as GeoJSON (GET /api/sites/clusters/)
     - Get cluster statistics (GET /api/sites/cluster_stats/)
+    - Get cluster KPI history and detected events (GET /api/sites/cluster_analysis/)
     """
     
     queryset = Site.objects.all()
@@ -162,6 +163,98 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
             'edge_sites': edge_sites,
             'interior_sites': interior_sites,
             'clusters': clusters,
+        })
+
+    @action(detail=False, methods=['get'])
+    def cluster_analysis(self, request):
+        """Return cluster context, detected events, and monthly KPI aggregates."""
+        raw_cluster_id = request.query_params.get('cluster_id')
+        if raw_cluster_id is None:
+            return Response({'error': 'cluster_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            cluster_id = int(raw_cluster_id)
+        except (TypeError, ValueError):
+            return Response({'error': 'cluster_id must be an integer'}, status=status.HTTP_400_BAD_REQUEST)
+        if cluster_id == -1:
+            return Response(
+                {'error': 'Noise sites are independent and are not a single cluster'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cluster_sites = Site.objects.filter(cluster_id=cluster_id)
+        site_count = cluster_sites.count()
+        if not site_count:
+            return Response({'error': f'Cluster {cluster_id} was not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        cluster_features = ClusterFeatures.objects.filter(site__cluster_id=cluster_id).aggregate(
+            density=Avg('cluster_density_sites_per_km2'),
+            traffic=Avg('cluster_avg_traffic_gb'),
+            users=Avg('cluster_avg_users'),
+            centroid_distance=Avg('dist_to_cluster_centroid_m'),
+        )
+        cells = Cell.objects.filter(site__cluster_id=cluster_id, is_launched=True).select_related('site').order_by(
+            'launch_date', 'site__site_name', 'cell_name'
+        )
+        event_type_by_technology = {'4G': 'LTE_ADDED', '3G': '3G_ADDED', '2G': '2G_ADDED'}
+        events = []
+        for cell in cells:
+            event_date = cell.site.launch_date if cell.site.is_launched and cell.site.launch_date else cell.launch_date
+            if event_date is None:
+                continue
+            events.append({
+                'event_date': event_date.isoformat(),
+                'event_type': 'SITE_ADDED' if cell.site.is_launched else event_type_by_technology.get(cell.technology, 'CELL_ADDED'),
+                'site_id': cell.site.site_id,
+                'site_name': cell.site.site_name,
+                'cell_id': cell.cell_id,
+                'cell_name': cell.cell_name,
+                'technology': cell.technology,
+            })
+
+        monthly_rows = MAOSMonthlyKPI.objects.filter(cell__site__cluster_id=cluster_id).values(
+            'month_date'
+        ).annotate(
+            downlink_bits=Sum('thrp_bits_dl'),
+            active_users=Sum('active_users_avg'),
+            traffic_users=Sum('traffic_user_avg'),
+            downlink_prb=Avg('prb_util_dl_pct'),
+            cqi=Avg('cqi_avg'),
+            reporting_cells=Count('cell_id', distinct=True),
+        ).order_by('month_date')
+        monthly_kpis = [
+            {
+                'month': row['month_date'].isoformat(),
+                'downlink_traffic_gb': (row['downlink_bits'] or 0) / 8_000_000_000,
+                'active_users_sum': row['active_users'] or 0,
+                'traffic_users_sum': row['traffic_users'] or 0,
+                'downlink_prb_avg_pct': row['downlink_prb'] or 0,
+                'cqi_avg': row['cqi'] or 0,
+                'reporting_cells': row['reporting_cells'],
+            }
+            for row in monthly_rows
+        ]
+        event_counts = {}
+        for event in events:
+            event_counts[event['event_type']] = event_counts.get(event['event_type'], 0) + 1
+
+        return Response({
+            'cluster_id': cluster_id,
+            'context': {
+                'site_count': site_count,
+                'edge_sites': cluster_sites.filter(is_cluster_edge=True).count(),
+                'interior_sites': cluster_sites.filter(is_cluster_edge=False).count(),
+                'sites_with_maos': MAOSMonthlyKPI.objects.filter(
+                    cell__site__cluster_id=cluster_id
+                ).values('cell__site_id').distinct().count(),
+                'cluster_density_sites_per_km2': cluster_features['density'] or 0,
+                'cluster_avg_traffic_gb': cluster_features['traffic'] or 0,
+                'cluster_avg_users': cluster_features['users'] or 0,
+                'avg_dist_to_centroid_m': cluster_features['centroid_distance'] or 0,
+                'event_count': len(events),
+                'event_counts': event_counts,
+            },
+            'monthly_kpis': monthly_kpis,
+            'events': events,
         })
     
     @action(detail=True, methods=['get'])

@@ -15,6 +15,7 @@ from .features import (
     KPIFeatures,
 )
 from .kpi import PreLaunchKPI, MAOSMonthlyKPI
+from .feature_sync import FeatureSyncJob
 
 __all__ = [
     'Site',
@@ -28,4 +29,5 @@ __all__ = [
     'KPIFeatures',
     'PreLaunchKPI',
     'MAOSMonthlyKPI',
+    'FeatureSyncJob',
 ]

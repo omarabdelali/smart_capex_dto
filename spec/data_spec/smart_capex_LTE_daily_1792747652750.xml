@@ -1,0 +1,566 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root version="2.0">
+  <report name="smart_capex_LTE_daily" path="\Omar" commonObj="false" commonTime="false" desc="">
+    <sheet name="Subreport 1" sheetType="NORMAL_TO_C" tableChartShowMode="TABLEANDCHART">
+      <neTypeInfo neTypeId="-7" neTypeName="4GBTS" vendorId="1048576" verndorName="Huawei"/>
+      <objectCondition>
+        <objType objTypeId="LTECell" displayName="LTE Cell"/>
+        <queryObjDimTypeId objTypeId="LTECell" displayName="LTE Cell"/>
+        <objTypeForObjTree objTypeId="LTECell" displayName="LTE Cell"/>
+        <objectViewType viewType="BYLEVEL" viewName="0"/>
+        <objectInstance>
+          <objType objTypeId="PLMN">
+          </objType>
+        </objectInstance>
+        <checkedObjects>
+        </checkedObjects>
+        <showAttr>
+          <attr objectTypeId="LTE" objectTypeName="eNodeB" attrName="LTE_NAME" colName="eNodeB Name" dataType="1" colIndex="0" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="FreqBand" colName="Frequency band" dataType="0" colIndex="1" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="CrsPortNum" colName="CRS Port Number" dataType="1" colIndex="2" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="FddTddInd" colName="Cell FDD TDD Indication" dataType="1" colIndex="3" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="CellId" colName="Cell ID" dataType="0" colIndex="4" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="CellName" colName="Cell Name" dataType="1" colIndex="5" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="CellActiveState" colName="Cell active state" dataType="1" colIndex="6" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="DlEarfcn" colName="Downlink EARFCN" dataType="0" colIndex="7" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="DlBandWidth" colName="Downlink bandwidth" dataType="1" colIndex="8" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="TxRxMode" colName="LTECell Tx and Rx Mode" dataType="1" colIndex="9" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="LocalCellId" colName="LocalCell Id" dataType="0" colIndex="10" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="PhyCellId" colName="Physical cell ID" dataType="0" colIndex="11" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="Tac" colName="Tracking area code" dataType="0" colIndex="12" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="UlEarfcn" colName="Uplink EARFCN" dataType="0" colIndex="13" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="ENodeBFunctionName" colName="eNodeB Function Name" dataType="1" colIndex="14" isShowTable="1" isShowGraph="1"/>
+        </showAttr>
+        <objectFilter>
+        </objectFilter>
+      </objectCondition>
+      <counters>
+        <counter counterId="1526734117" name="L.UL.RSRP.PUCCH.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734118" name="L.UL.RSRP.PUCCH.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734127" name="L.UL.RSRP.PUCCH.Index10" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734128" name="L.UL.RSRP.PUCCH.Index11" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734129" name="L.UL.RSRP.PUCCH.Index12" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734130" name="L.UL.RSRP.PUCCH.Index13" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734131" name="L.UL.RSRP.PUCCH.Index14" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734132" name="L.UL.RSRP.PUCCH.Index15" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734133" name="L.UL.RSRP.PUCCH.Index16" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734134" name="L.UL.RSRP.PUCCH.Index17" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734135" name="L.UL.RSRP.PUCCH.Index18" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734136" name="L.UL.RSRP.PUCCH.Index19" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734119" name="L.UL.RSRP.PUCCH.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734137" name="L.UL.RSRP.PUCCH.Index20" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734138" name="L.UL.RSRP.PUCCH.Index21" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734139" name="L.UL.RSRP.PUCCH.Index22" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734140" name="L.UL.RSRP.PUCCH.Index23" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734120" name="L.UL.RSRP.PUCCH.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734121" name="L.UL.RSRP.PUCCH.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734122" name="L.UL.RSRP.PUCCH.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734123" name="L.UL.RSRP.PUCCH.Index6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734124" name="L.UL.RSRP.PUCCH.Index7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734125" name="L.UL.RSRP.PUCCH.Index8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734126" name="L.UL.RSRP.PUCCH.Index9" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734093" name="L.UL.RSRP.PUSCH.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734094" name="L.UL.RSRP.PUSCH.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734103" name="L.UL.RSRP.PUSCH.Index10" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734104" name="L.UL.RSRP.PUSCH.Index11" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734105" name="L.UL.RSRP.PUSCH.Index12" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734106" name="L.UL.RSRP.PUSCH.Index13" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734107" name="L.UL.RSRP.PUSCH.Index14" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734108" name="L.UL.RSRP.PUSCH.Index15" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734109" name="L.UL.RSRP.PUSCH.Index16" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734110" name="L.UL.RSRP.PUSCH.Index17" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734111" name="L.UL.RSRP.PUSCH.Index18" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734112" name="L.UL.RSRP.PUSCH.Index19" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734095" name="L.UL.RSRP.PUSCH.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734113" name="L.UL.RSRP.PUSCH.Index20" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734114" name="L.UL.RSRP.PUSCH.Index21" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734115" name="L.UL.RSRP.PUSCH.Index22" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734116" name="L.UL.RSRP.PUSCH.Index23" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734096" name="L.UL.RSRP.PUSCH.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734097" name="L.UL.RSRP.PUSCH.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734098" name="L.UL.RSRP.PUSCH.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734099" name="L.UL.RSRP.PUSCH.Index6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734100" name="L.UL.RSRP.PUSCH.Index7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734101" name="L.UL.RSRP.PUSCH.Index8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734102" name="L.UL.RSRP.PUSCH.Index9" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745739" name="L.TA.UE.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745740" name="L.TA.UE.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745741" name="L.TA.UE.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745742" name="L.TA.UE.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745743" name="L.TA.UE.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745744" name="L.TA.UE.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745745" name="L.TA.UE.Index6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727209" name="L.Cell.Unavail.Dur.Sys" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727396" name="L.ChMeas.CQI.DL.0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727397" name="L.ChMeas.CQI.DL.1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727407" name="L.ChMeas.CQI.DL.11" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727406" name="L.ChMeas.CQI.DL.10" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727408" name="L.ChMeas.CQI.DL.12" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727405" name="L.ChMeas.CQI.DL.9" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727404" name="L.ChMeas.CQI.DL.8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727403" name="L.ChMeas.CQI.DL.7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727402" name="L.ChMeas.CQI.DL.6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727401" name="L.ChMeas.CQI.DL.5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737711" name="L.ChMeas.CQI.DL.BorderUE.Num" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737710" name="L.ChMeas.CQI.DL.BorderUE.Total" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727409" name="L.ChMeas.CQI.DL.13" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727410" name="L.ChMeas.CQI.DL.14" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727411" name="L.ChMeas.CQI.DL.15" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727398" name="L.ChMeas.CQI.DL.2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727399" name="L.ChMeas.CQI.DL.3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727400" name="L.ChMeas.CQI.DL.4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526730141" name="L.ChMeas.RI.Rank1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526730142" name="L.ChMeas.RI.Rank2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732737" name="L.ChMeas.RI.Rank3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732738" name="L.ChMeas.RI.Rank4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526746770" name="L.ChMeas.RI.Rank5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526746771" name="L.ChMeas.RI.Rank6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526746772" name="L.ChMeas.RI.Rank7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526746773" name="L.ChMeas.RI.Rank8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526726740" name="L.ChMeas.PRB.DL.Used.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737839" name="L.ChMeas.PRB.TM1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737840" name="L.ChMeas.PRB.TM2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737841" name="L.ChMeas.PRB.TM3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737842" name="L.ChMeas.PRB.TM4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737843" name="L.ChMeas.PRB.TM5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737844" name="L.ChMeas.PRB.TM6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737845" name="L.ChMeas.PRB.TM7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737846" name="L.ChMeas.PRB.TM8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526747667" name="L.ChMeas.PRB.TM9" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728433" name="L.ChMeas.PRB.DL.Avail" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727378" name="L.Traffic.User.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732743" name="L.Thrp.bits.DL.PerUser.In.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732744" name="L.Thrp.bits.DL.PerUser.In.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732745" name="L.Thrp.bits.DL.PerUser.In.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732746" name="L.Thrp.bits.DL.PerUser.In.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732747" name="L.Thrp.bits.DL.PerUser.In.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732748" name="L.Thrp.bits.DL.PerUser.In.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732749" name="L.Thrp.bits.DL.PerUser.Out.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732750" name="L.Thrp.bits.DL.PerUser.Out.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732751" name="L.Thrp.bits.DL.PerUser.Out.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732752" name="L.Thrp.bits.DL.PerUser.Out.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732753" name="L.Thrp.bits.DL.PerUser.Out.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732754" name="L.Thrp.bits.DL.PerUser.Out.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526729005" name="L.Thrp.bits.DL.LastTTI" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728261" name="L.Thrp.bits.DL" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526729015" name="L.Thrp.Time.DL.RmvLastTTI" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526736791" name="L.Traffic.DL.PktDelay.Time" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526736792" name="L.Traffic.DL.PktDelay.Num" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526749455" name="L.Traffic.User.LowLatency.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727085" name="L.RRC.ReEst.Att" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745976" name="L.RRC.ReEst.Att.Act" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727086" name="L.RRC.ReEst.Succ" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1741981816" name="RRC ReEst Setup Success Rate" alias="" type="INTELLIGENT_COUNTER"/>
+        <counter counterId="1526726659" name="L.RRC.ConnReq.Succ" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1740641616" name="FT_AVERAGE NUMBER OF UE QUEUED DL" alias="" type="USER_COUNTER"/>
+        <counter counterId="1740641606" name="FT_AVERAGE NUMBER OF UE QUEUED UL" alias="" type="USER_COUNTER"/>
+        <counter counterId="1526728975" name="L.Traffic.ActiveUser.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728969" name="L.Traffic.ActiveUser.DL.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728970" name="L.Traffic.ActiveUser.DL.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1741981497" name="L.Traffic.ActiveUser.Ul.Avg" alias="" type="USER_COUNTER"/>
+        <counter counterId="1526728973" name="L.Traffic.ActiveUser.UL.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728976" name="L.Traffic.ActiveUser.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728972" name="L.Traffic.ActiveUser.UL.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526741888" name="L.Traffic.User.BorderUE.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526741889" name="L.Traffic.User.BorderUE.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728336" name="L.Traffic.User.Data.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737851" name="L.Traffic.User.InSession.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737852" name="L.Traffic.User.InSession.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526747879" name="L.Traffic.User.TM9Capability.Avg" alias="" type="SYSTEM_COUNTER"/>
+      </counters>
+      <timeCondition timeDimType="DAY" timeDimName="Day" queryTimeTypeEnum="SPEC_TIME_SEGMENT" showTimeSplit="false" customTimeDetail="">
+        <dateRange dateRangeEnum="RELATIVE_CUSTOME">
+          <date beginDate="2026-10-23 10:27" endDate="2026-10-23 10:27"/>
+          <offset offsetUnit="MONTH" offsetBegin="40" offsetEnd="0"/>
+          <compareSpan span="0"/>
+        </dateRange>
+        <timeRange timeRangeTypeEnum="ALL_TIMESEG" selectedHour="0" busyRuleId="-1"/>
+      </timeCondition>
+      <charts chartColumn="2" legendWidth="0">
+      </charts>
+      <filter simple="true"/>
+      <topN counterId="-1" op="LT" value="0"/>
+      <benchMarkId id="-1"/>
+      <database queryMode="SQL" sqlText=""/>
+    </sheet>
+  </report>
+  <report name="smart_capex_LTE_weekly" path="\Omar" commonObj="false" commonTime="false" desc="">
+    <sheet name="Subreport 1" sheetType="NORMAL_TO_C" tableChartShowMode="TABLEANDCHART">
+      <neTypeInfo neTypeId="-7" neTypeName="4GBTS" vendorId="1048576" verndorName="Huawei"/>
+      <objectCondition>
+        <objType objTypeId="LTECell" displayName="LTE Cell"/>
+        <queryObjDimTypeId objTypeId="LTECell" displayName="LTE Cell"/>
+        <objTypeForObjTree objTypeId="LTECell" displayName="LTE Cell"/>
+        <objectViewType viewType="BYLEVEL" viewName="0"/>
+        <objectInstance>
+          <objType objTypeId="PLMN">
+          </objType>
+        </objectInstance>
+        <checkedObjects>
+        </checkedObjects>
+        <showAttr>
+          <attr objectTypeId="LTE" objectTypeName="eNodeB" attrName="LTE_NAME" colName="eNodeB Name" dataType="1" colIndex="0" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="FreqBand" colName=" Frequency band" dataType="0" colIndex="1" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="CrsPortNum" colName="CRS Port Number" dataType="1" colIndex="2" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="FddTddInd" colName="Cell FDD TDD Indication" dataType="1" colIndex="3" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="CellId" colName="Cell ID" dataType="0" colIndex="4" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="CellName" colName="Cell Name" dataType="1" colIndex="5" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="CellActiveState" colName="Cell active state" dataType="1" colIndex="6" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="DlEarfcn" colName="Downlink EARFCN" dataType="0" colIndex="7" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="DlBandWidth" colName="Downlink bandwidth" dataType="1" colIndex="8" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="TxRxMode" colName="LTECell Tx and Rx Mode" dataType="1" colIndex="9" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="LocalCellId" colName="LocalCell Id" dataType="0" colIndex="10" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="PhyCellId" colName="Physical cell ID" dataType="0" colIndex="11" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="Tac" colName="Tracking area code" dataType="0" colIndex="12" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="UlEarfcn" colName="Uplink EARFCN" dataType="0" colIndex="13" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="ENodeBFunctionName" colName="eNodeB Function Name" dataType="1" colIndex="14" isShowTable="1" isShowGraph="1"/>
+        </showAttr>
+        <objectFilter>
+        </objectFilter>
+      </objectCondition>
+      <counters>
+        <counter counterId="1526734117" name="L.UL.RSRP.PUCCH.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734118" name="L.UL.RSRP.PUCCH.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734127" name="L.UL.RSRP.PUCCH.Index10" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734128" name="L.UL.RSRP.PUCCH.Index11" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734129" name="L.UL.RSRP.PUCCH.Index12" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734130" name="L.UL.RSRP.PUCCH.Index13" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734131" name="L.UL.RSRP.PUCCH.Index14" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734132" name="L.UL.RSRP.PUCCH.Index15" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734133" name="L.UL.RSRP.PUCCH.Index16" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734134" name="L.UL.RSRP.PUCCH.Index17" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734135" name="L.UL.RSRP.PUCCH.Index18" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734136" name="L.UL.RSRP.PUCCH.Index19" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734119" name="L.UL.RSRP.PUCCH.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734137" name="L.UL.RSRP.PUCCH.Index20" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734138" name="L.UL.RSRP.PUCCH.Index21" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734139" name="L.UL.RSRP.PUCCH.Index22" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734140" name="L.UL.RSRP.PUCCH.Index23" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734120" name="L.UL.RSRP.PUCCH.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734121" name="L.UL.RSRP.PUCCH.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734122" name="L.UL.RSRP.PUCCH.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734123" name="L.UL.RSRP.PUCCH.Index6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734124" name="L.UL.RSRP.PUCCH.Index7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734125" name="L.UL.RSRP.PUCCH.Index8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734126" name="L.UL.RSRP.PUCCH.Index9" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734093" name="L.UL.RSRP.PUSCH.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734094" name="L.UL.RSRP.PUSCH.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734103" name="L.UL.RSRP.PUSCH.Index10" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734104" name="L.UL.RSRP.PUSCH.Index11" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734105" name="L.UL.RSRP.PUSCH.Index12" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734106" name="L.UL.RSRP.PUSCH.Index13" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734107" name="L.UL.RSRP.PUSCH.Index14" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734108" name="L.UL.RSRP.PUSCH.Index15" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734109" name="L.UL.RSRP.PUSCH.Index16" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734110" name="L.UL.RSRP.PUSCH.Index17" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734111" name="L.UL.RSRP.PUSCH.Index18" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734112" name="L.UL.RSRP.PUSCH.Index19" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734095" name="L.UL.RSRP.PUSCH.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734113" name="L.UL.RSRP.PUSCH.Index20" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734114" name="L.UL.RSRP.PUSCH.Index21" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734115" name="L.UL.RSRP.PUSCH.Index22" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734116" name="L.UL.RSRP.PUSCH.Index23" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734096" name="L.UL.RSRP.PUSCH.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734097" name="L.UL.RSRP.PUSCH.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734098" name="L.UL.RSRP.PUSCH.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734099" name="L.UL.RSRP.PUSCH.Index6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734100" name="L.UL.RSRP.PUSCH.Index7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734101" name="L.UL.RSRP.PUSCH.Index8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734102" name="L.UL.RSRP.PUSCH.Index9" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745739" name="L.TA.UE.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745740" name="L.TA.UE.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745741" name="L.TA.UE.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745742" name="L.TA.UE.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745743" name="L.TA.UE.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745744" name="L.TA.UE.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745745" name="L.TA.UE.Index6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727209" name="L.Cell.Unavail.Dur.Sys" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727396" name="L.ChMeas.CQI.DL.0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727397" name="L.ChMeas.CQI.DL.1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727407" name="L.ChMeas.CQI.DL.11" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727406" name="L.ChMeas.CQI.DL.10" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727408" name="L.ChMeas.CQI.DL.12" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727405" name="L.ChMeas.CQI.DL.9" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727404" name="L.ChMeas.CQI.DL.8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727403" name="L.ChMeas.CQI.DL.7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727402" name="L.ChMeas.CQI.DL.6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727401" name="L.ChMeas.CQI.DL.5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737711" name="L.ChMeas.CQI.DL.BorderUE.Num" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737710" name="L.ChMeas.CQI.DL.BorderUE.Total" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727409" name="L.ChMeas.CQI.DL.13" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727410" name="L.ChMeas.CQI.DL.14" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727411" name="L.ChMeas.CQI.DL.15" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727398" name="L.ChMeas.CQI.DL.2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727399" name="L.ChMeas.CQI.DL.3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727400" name="L.ChMeas.CQI.DL.4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526730141" name="L.ChMeas.RI.Rank1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526730142" name="L.ChMeas.RI.Rank2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732737" name="L.ChMeas.RI.Rank3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732738" name="L.ChMeas.RI.Rank4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526746770" name="L.ChMeas.RI.Rank5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526746771" name="L.ChMeas.RI.Rank6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526746772" name="L.ChMeas.RI.Rank7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526746773" name="L.ChMeas.RI.Rank8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526726740" name="L.ChMeas.PRB.DL.Used.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737839" name="L.ChMeas.PRB.TM1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737840" name="L.ChMeas.PRB.TM2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737841" name="L.ChMeas.PRB.TM3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737842" name="L.ChMeas.PRB.TM4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737843" name="L.ChMeas.PRB.TM5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737844" name="L.ChMeas.PRB.TM6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737845" name="L.ChMeas.PRB.TM7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737846" name="L.ChMeas.PRB.TM8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526747667" name="L.ChMeas.PRB.TM9" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728433" name="L.ChMeas.PRB.DL.Avail" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727378" name="L.Traffic.User.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732743" name="L.Thrp.bits.DL.PerUser.In.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732744" name="L.Thrp.bits.DL.PerUser.In.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732745" name="L.Thrp.bits.DL.PerUser.In.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732746" name="L.Thrp.bits.DL.PerUser.In.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732747" name="L.Thrp.bits.DL.PerUser.In.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732748" name="L.Thrp.bits.DL.PerUser.In.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732749" name="L.Thrp.bits.DL.PerUser.Out.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732750" name="L.Thrp.bits.DL.PerUser.Out.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732751" name="L.Thrp.bits.DL.PerUser.Out.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732752" name="L.Thrp.bits.DL.PerUser.Out.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732753" name="L.Thrp.bits.DL.PerUser.Out.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732754" name="L.Thrp.bits.DL.PerUser.Out.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526729005" name="L.Thrp.bits.DL.LastTTI" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728261" name="L.Thrp.bits.DL" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526729015" name="L.Thrp.Time.DL.RmvLastTTI" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526736791" name="L.Traffic.DL.PktDelay.Time" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526736792" name="L.Traffic.DL.PktDelay.Num" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526749455" name="L.Traffic.User.LowLatency.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727085" name="L.RRC.ReEst.Att" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745976" name="L.RRC.ReEst.Att.Act" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727086" name="L.RRC.ReEst.Succ" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1741981816" name="RRC ReEst Setup Success Rate" alias="" type="INTELLIGENT_COUNTER"/>
+        <counter counterId="1526726659" name="L.RRC.ConnReq.Succ" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1740641616" name="FT_AVERAGE NUMBER OF UE QUEUED DL" alias="" type="USER_COUNTER"/>
+        <counter counterId="1740641606" name="FT_AVERAGE NUMBER OF UE QUEUED UL" alias="" type="USER_COUNTER"/>
+        <counter counterId="1526728975" name="L.Traffic.ActiveUser.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728969" name="L.Traffic.ActiveUser.DL.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728970" name="L.Traffic.ActiveUser.DL.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1741981497" name="L.Traffic.ActiveUser.Ul.Avg" alias="" type="USER_COUNTER"/>
+        <counter counterId="1526728973" name="L.Traffic.ActiveUser.UL.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728976" name="L.Traffic.ActiveUser.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728972" name="L.Traffic.ActiveUser.UL.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526741888" name="L.Traffic.User.BorderUE.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526741889" name="L.Traffic.User.BorderUE.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728336" name="L.Traffic.User.Data.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737851" name="L.Traffic.User.InSession.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737852" name="L.Traffic.User.InSession.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526747879" name="L.Traffic.User.TM9Capability.Avg" alias="" type="SYSTEM_COUNTER"/>
+      </counters>
+      <timeCondition timeDimType="WEEK" timeDimName="Week" queryTimeTypeEnum="SPEC_TIME_SEGMENT" showTimeSplit="false" customTimeDetail="">
+        <dateRange dateRangeEnum="RELATIVE_CUSTOME">
+          <date beginDate="2026-10-23 10:27" endDate="2026-10-23 10:27"/>
+          <offset offsetUnit="WEEK" offsetBegin="300" offsetEnd="0"/>
+          <compareSpan span="0"/>
+        </dateRange>
+        <timeRange timeRangeTypeEnum="ALL_TIMESEG" selectedHour="0" busyRuleId="-1"/>
+      </timeCondition>
+      <charts chartColumn="2" legendWidth="0">
+      </charts>
+      <filter simple="true"/>
+      <topN counterId="-1" op="LT" value="0"/>
+      <benchMarkId id="-1"/>
+      <database queryMode="SQL" sqlText=""/>
+    </sheet>
+  </report>
+  <report name="smart_capex_LTE_monthly" path="\Omar" commonObj="false" commonTime="false" desc="">
+    <sheet name="Subreport 1" sheetType="NORMAL_TO_C" tableChartShowMode="TABLEANDCHART">
+      <neTypeInfo neTypeId="-7" neTypeName="4GBTS" vendorId="1048576" verndorName="Huawei"/>
+      <objectCondition>
+        <objType objTypeId="LTECell" displayName="LTE Cell"/>
+        <queryObjDimTypeId objTypeId="LTECell" displayName="LTE Cell"/>
+        <objTypeForObjTree objTypeId="LTECell" displayName="LTE Cell"/>
+        <objectViewType viewType="BYLEVEL" viewName="0"/>
+        <objectInstance>
+          <objType objTypeId="PLMN">
+          </objType>
+        </objectInstance>
+        <checkedObjects>
+        </checkedObjects>
+        <showAttr>
+          <attr objectTypeId="LTE" objectTypeName="eNodeB" attrName="LTE_NAME" colName="eNodeB Name" dataType="1" colIndex="0" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="FreqBand" colName="Frequency band" dataType="0" colIndex="1" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="CrsPortNum" colName="CRS Port Number" dataType="1" colIndex="2" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="FddTddInd" colName="Cell FDD TDD Indication" dataType="1" colIndex="3" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="CellId" colName="Cell ID" dataType="0" colIndex="4" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="CellName" colName="Cell Name" dataType="1" colIndex="5" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="CellActiveState" colName="Cell active state" dataType="1" colIndex="6" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="DlEarfcn" colName="Downlink EARFCN" dataType="0" colIndex="7" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="DlBandWidth" colName="Downlink bandwidth" dataType="1" colIndex="8" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="TxRxMode" colName="LTECell Tx and Rx Mode" dataType="1" colIndex="9" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="LocalCellId" colName="LocalCell Id" dataType="0" colIndex="10" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="PhyCellId" colName="Physical cell ID" dataType="0" colIndex="11" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="Tac" colName="Tracking area code" dataType="0" colIndex="12" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="UlEarfcn" colName="Uplink EARFCN" dataType="0" colIndex="13" isShowTable="1" isShowGraph="1"/>
+          <attr objectTypeId="LTECell" objectTypeName="LTE Cell" attrName="ENodeBFunctionName" colName="eNodeB Function Name" dataType="1" colIndex="14" isShowTable="1" isShowGraph="1"/>
+        </showAttr>
+        <objectFilter>
+        </objectFilter>
+      </objectCondition>
+      <counters>
+        <counter counterId="1526734117" name="L.UL.RSRP.PUCCH.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734118" name="L.UL.RSRP.PUCCH.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734127" name="L.UL.RSRP.PUCCH.Index10" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734128" name="L.UL.RSRP.PUCCH.Index11" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734129" name="L.UL.RSRP.PUCCH.Index12" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734130" name="L.UL.RSRP.PUCCH.Index13" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734131" name="L.UL.RSRP.PUCCH.Index14" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734132" name="L.UL.RSRP.PUCCH.Index15" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734133" name="L.UL.RSRP.PUCCH.Index16" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734134" name="L.UL.RSRP.PUCCH.Index17" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734135" name="L.UL.RSRP.PUCCH.Index18" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734136" name="L.UL.RSRP.PUCCH.Index19" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734119" name="L.UL.RSRP.PUCCH.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734137" name="L.UL.RSRP.PUCCH.Index20" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734138" name="L.UL.RSRP.PUCCH.Index21" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734139" name="L.UL.RSRP.PUCCH.Index22" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734140" name="L.UL.RSRP.PUCCH.Index23" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734120" name="L.UL.RSRP.PUCCH.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734121" name="L.UL.RSRP.PUCCH.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734122" name="L.UL.RSRP.PUCCH.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734123" name="L.UL.RSRP.PUCCH.Index6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734124" name="L.UL.RSRP.PUCCH.Index7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734125" name="L.UL.RSRP.PUCCH.Index8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734126" name="L.UL.RSRP.PUCCH.Index9" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734093" name="L.UL.RSRP.PUSCH.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734094" name="L.UL.RSRP.PUSCH.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734103" name="L.UL.RSRP.PUSCH.Index10" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734104" name="L.UL.RSRP.PUSCH.Index11" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734105" name="L.UL.RSRP.PUSCH.Index12" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734106" name="L.UL.RSRP.PUSCH.Index13" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734107" name="L.UL.RSRP.PUSCH.Index14" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734108" name="L.UL.RSRP.PUSCH.Index15" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734109" name="L.UL.RSRP.PUSCH.Index16" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734110" name="L.UL.RSRP.PUSCH.Index17" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734111" name="L.UL.RSRP.PUSCH.Index18" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734112" name="L.UL.RSRP.PUSCH.Index19" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734095" name="L.UL.RSRP.PUSCH.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734113" name="L.UL.RSRP.PUSCH.Index20" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734114" name="L.UL.RSRP.PUSCH.Index21" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734115" name="L.UL.RSRP.PUSCH.Index22" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734116" name="L.UL.RSRP.PUSCH.Index23" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734096" name="L.UL.RSRP.PUSCH.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734097" name="L.UL.RSRP.PUSCH.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734098" name="L.UL.RSRP.PUSCH.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734099" name="L.UL.RSRP.PUSCH.Index6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734100" name="L.UL.RSRP.PUSCH.Index7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734101" name="L.UL.RSRP.PUSCH.Index8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526734102" name="L.UL.RSRP.PUSCH.Index9" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745739" name="L.TA.UE.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745740" name="L.TA.UE.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745741" name="L.TA.UE.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745742" name="L.TA.UE.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745743" name="L.TA.UE.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745744" name="L.TA.UE.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745745" name="L.TA.UE.Index6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727209" name="L.Cell.Unavail.Dur.Sys" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727396" name="L.ChMeas.CQI.DL.0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727397" name="L.ChMeas.CQI.DL.1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727407" name="L.ChMeas.CQI.DL.11" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727406" name="L.ChMeas.CQI.DL.10" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727408" name="L.ChMeas.CQI.DL.12" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727405" name="L.ChMeas.CQI.DL.9" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727404" name="L.ChMeas.CQI.DL.8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727403" name="L.ChMeas.CQI.DL.7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727402" name="L.ChMeas.CQI.DL.6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727401" name="L.ChMeas.CQI.DL.5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737711" name="L.ChMeas.CQI.DL.BorderUE.Num" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737710" name="L.ChMeas.CQI.DL.BorderUE.Total" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727409" name="L.ChMeas.CQI.DL.13" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727410" name="L.ChMeas.CQI.DL.14" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727411" name="L.ChMeas.CQI.DL.15" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727398" name="L.ChMeas.CQI.DL.2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727399" name="L.ChMeas.CQI.DL.3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727400" name="L.ChMeas.CQI.DL.4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526730141" name="L.ChMeas.RI.Rank1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526730142" name="L.ChMeas.RI.Rank2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732737" name="L.ChMeas.RI.Rank3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732738" name="L.ChMeas.RI.Rank4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526746770" name="L.ChMeas.RI.Rank5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526746771" name="L.ChMeas.RI.Rank6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526746772" name="L.ChMeas.RI.Rank7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526746773" name="L.ChMeas.RI.Rank8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526726740" name="L.ChMeas.PRB.DL.Used.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737839" name="L.ChMeas.PRB.TM1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737840" name="L.ChMeas.PRB.TM2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737841" name="L.ChMeas.PRB.TM3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737842" name="L.ChMeas.PRB.TM4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737843" name="L.ChMeas.PRB.TM5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737844" name="L.ChMeas.PRB.TM6" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737845" name="L.ChMeas.PRB.TM7" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737846" name="L.ChMeas.PRB.TM8" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526747667" name="L.ChMeas.PRB.TM9" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728433" name="L.ChMeas.PRB.DL.Avail" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727378" name="L.Traffic.User.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732743" name="L.Thrp.bits.DL.PerUser.In.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732744" name="L.Thrp.bits.DL.PerUser.In.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732745" name="L.Thrp.bits.DL.PerUser.In.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732746" name="L.Thrp.bits.DL.PerUser.In.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732747" name="L.Thrp.bits.DL.PerUser.In.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732748" name="L.Thrp.bits.DL.PerUser.In.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732749" name="L.Thrp.bits.DL.PerUser.Out.Index0" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732750" name="L.Thrp.bits.DL.PerUser.Out.Index1" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732751" name="L.Thrp.bits.DL.PerUser.Out.Index2" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732752" name="L.Thrp.bits.DL.PerUser.Out.Index3" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732753" name="L.Thrp.bits.DL.PerUser.Out.Index4" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526732754" name="L.Thrp.bits.DL.PerUser.Out.Index5" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526729005" name="L.Thrp.bits.DL.LastTTI" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728261" name="L.Thrp.bits.DL" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526729015" name="L.Thrp.Time.DL.RmvLastTTI" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526736791" name="L.Traffic.DL.PktDelay.Time" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526736792" name="L.Traffic.DL.PktDelay.Num" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526749455" name="L.Traffic.User.LowLatency.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727085" name="L.RRC.ReEst.Att" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526745976" name="L.RRC.ReEst.Att.Act" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526727086" name="L.RRC.ReEst.Succ" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1741981816" name="RRC ReEst Setup Success Rate" alias="" type="INTELLIGENT_COUNTER"/>
+        <counter counterId="1526726659" name="L.RRC.ConnReq.Succ" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1740641616" name="FT_AVERAGE NUMBER OF UE QUEUED DL" alias="" type="USER_COUNTER"/>
+        <counter counterId="1740641606" name="FT_AVERAGE NUMBER OF UE QUEUED UL" alias="" type="USER_COUNTER"/>
+        <counter counterId="1526728975" name="L.Traffic.ActiveUser.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728969" name="L.Traffic.ActiveUser.DL.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728970" name="L.Traffic.ActiveUser.DL.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1741981497" name="L.Traffic.ActiveUser.Ul.Avg" alias="" type="USER_COUNTER"/>
+        <counter counterId="1526728973" name="L.Traffic.ActiveUser.UL.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728976" name="L.Traffic.ActiveUser.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728972" name="L.Traffic.ActiveUser.UL.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526741888" name="L.Traffic.User.BorderUE.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526741889" name="L.Traffic.User.BorderUE.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526728336" name="L.Traffic.User.Data.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737851" name="L.Traffic.User.InSession.Avg" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526737852" name="L.Traffic.User.InSession.Max" alias="" type="SYSTEM_COUNTER"/>
+        <counter counterId="1526747879" name="L.Traffic.User.TM9Capability.Avg" alias="" type="SYSTEM_COUNTER"/>
+      </counters>
+      <timeCondition timeDimType="MONTH" timeDimName="Month" queryTimeTypeEnum="SPEC_TIME_SEGMENT" showTimeSplit="false" customTimeDetail="">
+        <dateRange dateRangeEnum="RELATIVE_CUSTOME">
+          <date beginDate="2026-10-23 10:27" endDate="2026-10-23 10:27"/>
+          <offset offsetUnit="MONTH" offsetBegin="40" offsetEnd="0"/>
+          <compareSpan span="0"/>
+        </dateRange>
+        <timeRange timeRangeTypeEnum="ALL_TIMESEG" selectedHour="0" busyRuleId="-1"/>
+      </timeCondition>
+      <charts chartColumn="2" legendWidth="0">
+      </charts>
+      <filter simple="true"/>
+      <topN counterId="-1" op="LT" value="0"/>
+      <benchMarkId id="-1"/>
+      <database queryMode="SQL" sqlText=""/>
+    </sheet>
+  </report>
+  <userCounters>
+    <kpi neTypeId="-7" objTypeId="LTECell" fssTypeId="1526726705" fssName="Cell User Quantity Measurement">
+      <counter id="1741981497" desc="" name="L.Traffic.ActiveUser.Ul.Avg" alias="" unitId="0" formula="Unspecified version,eRAN13.X#[1526728972];eRAN11.X,eRAN12.X,eRAN19.X,eRAN20.X#[1526727382];eRAN15.X,eRAN16.X#[1526728972]" creator="admin" valueType="1" type="1" zeroDivisionRuleType="0" zeroDivisionSpecValue="0" valueLimitMinValid="0" valueLimitMinValue="0" valueLimitMaxValid="0" valueLimitMaxValue="0" baseObjDim=""/>
+    </kpi>
+    <kpi neTypeId="-7" objTypeId="LTECell" fssTypeId="13" fssName="Orange">
+      <counter id="1740641606" desc="" name="FT_AVERAGE NUMBER OF UE QUEUED UL" alias="" unitId="0" formula="Unspecified version,eRAN18.X,eRAN19.X,eRAN20.X#[1526728972]" creator="klaroussi" valueType="1" type="1" zeroDivisionRuleType="0" zeroDivisionSpecValue="0" valueLimitMinValid="0" valueLimitMinValue="0" valueLimitMaxValid="0" valueLimitMaxValue="0" baseObjDim=""/>
+    </kpi>
+    <kpi neTypeId="-7" objTypeId="LTECell" fssTypeId="13" fssName="Orange">
+      <counter id="1740641616" desc="" name="FT_AVERAGE NUMBER OF UE QUEUED DL" alias="" unitId="0" formula="Unspecified version,eRAN18.X,eRAN19.X,eRAN20.X#[1526728969]" creator="klaroussi" valueType="1" type="1" zeroDivisionRuleType="0" zeroDivisionSpecValue="0" valueLimitMinValid="0" valueLimitMinValue="0" valueLimitMaxValid="0" valueLimitMaxValue="0" baseObjDim=""/>
+    </kpi>
+  </userCounters>
+</root>

@@ -11,6 +11,9 @@
   - Specified 50m deduplication threshold for sites
   - Updated cluster feature computation requirements
 - **Configuration clarification (2026-10-25)**: Defined pre-event technology status from nonzero MAOS history, current-plan after status, event classification, and unavailable historical band/capacity values.
+- **UX clarification (2026-10-25)**: Site feature inspection uses a resizable docked panel on wide screens and a bottom sheet on mobile, keeping map selection and neighbor links visible.
+- **Cluster analysis clarification (2026-10-25)**: Add a cluster analysis page with cluster context, monthly aggregated MAOS KPIs, and a complete event list; event months are marked on the KPI timeline.
+- **Feature synchronization clarification (2026-10-25)**: Add Features only and Full sync actions, persisted background job status/progress, and full sync addition redetection followed by feature recomputation.
 
 - **v0 (2026-10-23)**: Initial specification draft
 
@@ -316,22 +319,29 @@ For each target site, provide:
 
 ## 7. Visualization Requirements
 
-### 7.1 Cluster Maps (Folium)
-Interactive HTML maps showing:
+### 7.1 Cluster Maps (Vue + Leaflet)
+Interactive maps showing:
 - Site markers color-coded by cluster_id
 - Cluster polygon boundaries (alpha shapes)
 - Out-of-bounds sites highlighted in RED
 - Edge sites with orange markers
 - Interior sites with green markers
-- Popups with site details and cluster stats
+- Site selection opens a docked, resizable feature inspector on wide screens and a dismissible bottom sheet on mobile; selected site markers and neighbor links remain visible
+- Map controls remain responsive and do not prevent access to the selected site's feature tabs
 
-### 7.2 Edge Score Heatmap
+### 7.2 Cluster Analysis Page
+- Select a DBSCAN cluster and show its site count, edge/interior split, MAOS coverage, density, and centroid context.
+- Plot cluster-aggregated monthly downlink traffic, active users, traffic users, downlink PRB, or CQI.
+- Draw a vertical event marker at each month containing a detected site/cell launch event; show same-month event counts and retain every event in the event list.
+- List each event's date, type, site, cell, and technology. Treat noise sites (`cluster_id=-1`) as independent, not as one cluster.
+
+### 7.3 Edge Score Heatmap
 Heatmap visualization of ANP edge_score:
 - Color gradient: green (infill) → yellow → red (edge)
 - Circle markers at site locations
 - Tooltip with edge_score value
 
-### 7.3 GeoJSON Export
+### 7.4 GeoJSON Export
 Export clustering results to standard GeoJSON format:
 - Point geometries for sites
 - Properties: All cluster features

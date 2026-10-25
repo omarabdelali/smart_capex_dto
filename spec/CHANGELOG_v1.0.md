@@ -30,6 +30,18 @@ This changelog tracks all requirement and specification changes from v0 (initial
 - Classify a cell addition on a previously active technology as `SECTOR_ADD`; classify a technology with no prior activity as `TECH_ADD`.
 - Keep `bands_added` blank without a dated cell-plan snapshot. Keep theoretical capacity at zero until a documented calculation and its inputs are available.
 
+## UX Update: Adaptive Site Inspector (2026-10-25)
+
+- Replace map-anchored site-detail popups with a persistent selected-site inspector.
+- Use a resizable side panel on wide screens and a dismissible, scrollable bottom sheet on mobile.
+- Keep the selected marker and nearby-site links visible while feature tabs are inspected.
+
+## Cluster Analysis Page (2026-10-25)
+
+- Add a cluster analysis page showing cluster context and monthly aggregated MAOS KPIs.
+- Mark months containing detected launch/addition events with vertical lines and expose the complete cell-event list for the selected cluster.
+- Preserve noise-site semantics by excluding `cluster_id=-1` from cluster selection.
+
 ### New Model Fields
 Added three new fields to Site model for clustering support:
 1. `cluster_id` (IntegerField)
@@ -288,6 +300,13 @@ python manage.py migrate core
 - [ ] Data catalog updated to 55 features
 
 ---
+
+## Feature Synchronization Update (2026-10-25)
+
+- Added an incremental feature synchronization page with Features only and Full sync actions.
+- Added persisted job state, stage, site-level progress, start/finish timestamps, and extraction results.
+- Full sync reruns MAOS addition detection before recomputing persisted features; only one active sync job is accepted at a time.
+- Added the optional feature pipeline progress callback used by the background job.
 
 ## References
 

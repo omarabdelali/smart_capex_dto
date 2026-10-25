@@ -4,21 +4,37 @@
       <h1>Smart CAPEX - Site Clustering</h1>
       <p>Phase 1: Tunisia Network Visualization</p>
     </header>
+
+    <nav class="app-navigation" aria-label="Main pages">
+      <button type="button" :aria-current="activePage === 'map' ? 'page' : null" @click="activePage = 'map'">Site map</button>
+      <button type="button" :aria-current="activePage === 'clusters' ? 'page' : null" @click="activePage = 'clusters'">Cluster analysis</button>
+      <button type="button" :aria-current="activePage === 'sync' ? 'page' : null" @click="activePage = 'sync'">Feature sync</button>
+    </nav>
     
     <main class="app-main">
-      <ClusterMapView />
+      <ClusterMapView v-if="activePage === 'map'" />
+      <ClusterAnalysisView v-else-if="activePage === 'clusters'" />
+      <FeatureSyncView v-else />
     </main>
   </div>
 </template>
 
 <script>
+import { ref } from 'vue';
 import ClusterMapView from './components/ClusterMapView.vue';
+import ClusterAnalysisView from './components/ClusterAnalysisView.vue';
+import FeatureSyncView from './components/FeatureSyncView.vue';
 
 export default {
   name: 'App',
   components: {
-    ClusterMapView
-  }
+    ClusterMapView,
+    ClusterAnalysisView,
+    FeatureSyncView
+  },
+  setup() {
+    return { activePage: ref('map') };
+  },
 };
 </script>
 
@@ -61,6 +77,32 @@ export default {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+.app-navigation {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 8px clamp(10px, 1.5vw, 20px);
+  background: #f8fafc;
+  border-bottom: 1px solid #dbe2ea;
+}
+
+.app-navigation button {
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #334155;
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-navigation button[aria-current="page"] {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
 }
 
 @media (max-width: 760px) {

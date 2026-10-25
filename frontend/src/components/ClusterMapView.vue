@@ -1,7 +1,7 @@
 <template>
   <div class="cluster-map-container">
     <div class="mobile-map-toolbar">
-      <button type="button" @click="controlsOpen = !controlsOpen" :aria-expanded="controlsOpen">
+      <button type="button" @click="toggleControls" :aria-expanded="controlsOpen">
         {{ controlsOpen ? 'Hide controls' : 'Map controls' }}
       </button>
       <strong>Smart CAPEX</strong>
@@ -124,11 +124,45 @@
       <!-- Elevation legend overlay -->
       <ElevationLegend :visible="demLayers.showElevation" />
     </div>
+
+    <aside
+      v-if="selectedSiteId"
+      class="site-inspector"
+      :style="{ '--inspector-width': `${inspectorWidth}px` }"
+      aria-label="Selected site details"
+    >
+      <div
+        class="inspector-resize"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize site details panel"
+        :aria-valuenow="inspectorWidth"
+        tabindex="0"
+        @pointerdown="startInspectorResize"
+        @pointermove="moveInspectorResize"
+        @pointerup="stopInspectorResize"
+        @pointercancel="stopInspectorResize"
+        @keydown="resizeInspectorWithKeyboard"
+      ></div>
+      <div class="inspector-toolbar">
+        <strong>Site details</strong>
+        <button type="button" aria-label="Close site details" @click="closeSiteDetails">Close</button>
+      </div>
+      <div class="inspector-content">
+        <SiteFeaturePopup
+          :key="selectedSiteId"
+          :site-id="selectedSiteId"
+          :api-base-url="apiBaseUrl"
+          :search-query="selectedSearchQuery"
+          :layout-update="refreshMapLayout"
+        />
+      </div>
+    </aside>
   </div>
 </template>
 
 <script>
-import { ref, onMounted, watch, createApp, nextTick } from 'vue';
+import { ref, onMounted, watch, nextTick } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import axios from 'axios';
@@ -139,7 +173,8 @@ export default {
   name: 'ClusterMapView',
   
   components: {
-    ElevationLegend
+    ElevationLegend,
+    SiteFeaturePopup
   },
   
   setup() {
@@ -147,7 +182,6 @@ export default {
     const map = ref(null);
     const sitesLayer = ref(null);
     const neighborLayer = ref(null);
-    let activeFeatureApp = null;
     const stats = ref(null);
     const loading = ref(false);
     const error = ref(null);
@@ -156,7 +190,13 @@ export default {
     const siteSearch = ref('');
     const searchQuery = ref('');
     const searchResultCount = ref(null);
-    const controlsOpen = ref(typeof window === 'undefined' || window.innerWidth > 760);
+    const controlsOpen = ref(typeof window === 'undefined' || window.innerWidth > 1024);
+    const selectedSiteId = ref(null);
+    const selectedSearchQuery = ref('');
+    const inspectorWidth = ref(440);
+    let inspectorDrag = null;
+    let selectedMarker = null;
+    let mapResizeFrame = null;
     
     const filters = ref({
       showEdge: true,
@@ -177,6 +217,7 @@ export default {
 
     // API base URL (configure this based on your Django backend)
     const API_BASE_URL = 'http://localhost:8000/api';
+    const apiBaseUrl = API_BASE_URL;
 
     /**
      * Initialize Leaflet map
@@ -322,6 +363,85 @@ export default {
       });
     };
 
+    const markSelectedMarker = layer => {
+      if (selectedMarker && selectedMarker !== layer) {
+        selectedMarker.getElement?.()?.classList.remove('site-marker-selected');
+        if (selectedMarker instanceof L.CircleMarker) {
+          selectedMarker.setStyle({ radius: 6, color: '#000', weight: 1 });
+        }
+      }
+      selectedMarker = layer;
+      if (layer instanceof L.CircleMarker) {
+        layer.setStyle({ radius: 9, color: '#111827', weight: 3 });
+      }
+      layer.getElement?.()?.classList.add('site-marker-selected');
+    };
+
+    const selectSite = (feature, layer, allFeatures) => {
+      selectedSiteId.value = String(feature.properties.site_id);
+      selectedSearchQuery.value = searchQuery.value;
+      controlsOpen.value = false;
+      markSelectedMarker(layer);
+      showNeighborLinks(feature, allFeatures);
+      nextTick(() => map.value?.invalidateSize({ pan: false }));
+    };
+
+    const closeSiteDetails = () => {
+      selectedSiteId.value = null;
+      selectedSearchQuery.value = '';
+      selectedMarker?.getElement?.()?.classList.remove('site-marker-selected');
+      if (selectedMarker instanceof L.CircleMarker) {
+        selectedMarker.setStyle({ radius: 6, color: '#000', weight: 1 });
+      }
+      selectedMarker = null;
+      neighborLayer.value?.clearLayers();
+      nextTick(() => map.value?.invalidateSize({ pan: false }));
+    };
+
+    const refreshMapLayout = () => nextTick(() => {
+      if (mapResizeFrame !== null) cancelAnimationFrame(mapResizeFrame);
+      mapResizeFrame = requestAnimationFrame(() => {
+        mapResizeFrame = null;
+        map.value?.invalidateSize({ pan: false, debounceMoveend: true });
+      });
+    });
+
+    const toggleControls = () => {
+      controlsOpen.value = !controlsOpen.value;
+      if (controlsOpen.value && selectedSiteId.value && window.innerWidth <= 1024) {
+        closeSiteDetails();
+      }
+    };
+
+    const startInspectorResize = event => {
+      if (window.innerWidth <= 1024 || event.button !== 0) return;
+      event.preventDefault();
+      inspectorDrag = { pointerId: event.pointerId, startX: event.clientX, startWidth: inspectorWidth.value };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    };
+
+    const moveInspectorResize = event => {
+      if (!inspectorDrag || inspectorDrag.pointerId !== event.pointerId) return;
+      const maxWidth = Math.max(360, Math.min(720, window.innerWidth - 560));
+      inspectorWidth.value = Math.max(360, Math.min(maxWidth, inspectorDrag.startWidth + inspectorDrag.startX - event.clientX));
+      refreshMapLayout();
+    };
+
+    const stopInspectorResize = event => {
+      if (!inspectorDrag || inspectorDrag.pointerId !== event.pointerId) return;
+      inspectorDrag = null;
+      refreshMapLayout();
+    };
+
+    const resizeInspectorWithKeyboard = event => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const maxWidth = Math.max(360, Math.min(720, window.innerWidth - 560));
+      const delta = event.key === 'ArrowLeft' ? 24 : -24;
+      inspectorWidth.value = Math.max(360, Math.min(maxWidth, inspectorWidth.value + delta));
+      refreshMapLayout();
+    };
+
     /**
      * Update map with cluster data
      */
@@ -333,12 +453,17 @@ export default {
 
       // Clear existing markers
       sitesLayer.value.clearLayers();
+      neighborLayer.value.clearLayers();
+      selectedMarker = null;
 
       // Fetch new data
       const geojson = await fetchClusterData();
       if (!geojson || !geojson.features || geojson.features.length === 0) {
         console.warn('No features to display');
-        if (searchQuery.value) searchResultCount.value = 0;
+        if (searchQuery.value) {
+          searchResultCount.value = 0;
+          closeSiteDetails();
+        }
         return;
       }
       if (searchQuery.value) searchResultCount.value = geojson.features.length;
@@ -407,39 +532,7 @@ export default {
         },
         
         onEachFeature: (feature, layer) => {
-          const mountNode = document.createElement('div');
-          const viewportWidth = window.visualViewport?.width || window.innerWidth;
-          const viewportHeight = window.visualViewport?.height || window.innerHeight;
-          const popupWidth = Math.max(260, viewportWidth - 32);
-          layer.bindPopup(mountNode, {
-            maxWidth: Math.min(540, popupWidth),
-            minWidth: Math.min(420, popupWidth),
-            maxHeight: Math.max(120, viewportHeight - 64),
-            autoPan: true,
-            keepInView: true,
-            autoPanPadding: [16, 16]
-          });
-          layer.on('click', () => showNeighborLinks(feature, geojson.features));
-          layer.on('popupopen', event => {
-            if (activeFeatureApp) activeFeatureApp.unmount();
-            activeFeatureApp = createApp(SiteFeaturePopup, {
-              siteId: String(feature.properties.site_id),
-              apiBaseUrl: API_BASE_URL,
-              searchQuery: searchQuery.value,
-              layoutUpdate: () => nextTick(() => {
-                if (event.popup.isOpen()) event.popup.update();
-              })
-            });
-            activeFeatureApp.mount(event.popup.getContent());
-            nextTick(() => event.popup.update());
-          });
-          layer.on('popupclose', () => {
-            if (activeFeatureApp) {
-              activeFeatureApp.unmount();
-              activeFeatureApp = null;
-            }
-            neighborLayer.value.clearLayers();
-          });
+          layer.on('click', () => selectSite(feature, layer, geojson.features));
         }
       }).addTo(sitesLayer.value);
 
@@ -451,7 +544,13 @@ export default {
         const bounds = geoJsonLayer.getBounds();
         console.log('Zooming to bounds:', bounds);
         map.value.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
-        if (searchQuery.value) geoJsonLayer.getLayers()[0].openPopup();
+        const layers = geoJsonLayer.getLayers();
+        if (searchQuery.value && layers.length) {
+          selectSite(layers[0].feature, layers[0], geojson.features);
+        } else if (selectedSiteId.value) {
+          const selectedLayer = layers.find(layer => String(layer.feature?.properties?.site_id) === selectedSiteId.value);
+          if (selectedLayer) selectSite(selectedLayer.feature, selectedLayer, geojson.features);
+        }
       } else {
         console.warn('No layers to display after filtering!');
       }
@@ -565,10 +664,21 @@ export default {
       searchQuery,
       searchResultCount,
       controlsOpen,
+      selectedSiteId,
+      selectedSearchQuery,
+      inspectorWidth,
+      apiBaseUrl,
       demLayers,
       updateMap,
       searchSites,
       clearSearch,
+      closeSiteDetails,
+      toggleControls,
+      startInspectorResize,
+      moveInspectorResize,
+      stopInspectorResize,
+      resizeInspectorWithKeyboard,
+      refreshMapLayout,
       toggleHillshade,
       toggleElevation,
       updateDEMOpacity
@@ -749,6 +859,67 @@ export default {
   min-width: 0;
 }
 
+.site-inspector {
+  position: relative;
+  display: flex;
+  flex: 0 0 var(--inspector-width);
+  flex-direction: column;
+  width: var(--inspector-width);
+  min-width: 0;
+  height: 100%;
+  background: #fff;
+  border-left: 1px solid #d9dee8;
+  box-shadow: -3px 0 14px rgba(15, 23, 42, .12);
+  z-index: 900;
+}
+
+.inspector-resize {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.inspector-resize:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+
+.inspector-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #1e293b;
+}
+
+.inspector-toolbar button {
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.inspector-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+:deep(.site-feature-popup) { width: 100%; max-width: none; }
+:deep(.tab-nav) { position: sticky; top: 0; z-index: 2; }
+
 .loading {
   text-align: center;
   padding: 20px;
@@ -762,11 +933,6 @@ export default {
   padding: 15px;
   border-radius: 5px;
   margin-top: 10px;
-}
-
-:deep(.leaflet-popup-content) {
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 :deep(.site-addition-marker) {
@@ -794,33 +960,30 @@ export default {
 :deep(.site-addition-icon.event-lte), .addition-legend-icon.event-lte { background: #7c3aed; }
 :deep(.site-addition-icon.event-3g), .addition-legend-icon.event-3g { background: #2563eb; }
 :deep(.site-addition-icon.event-2g), .addition-legend-icon.event-2g { background: #d97706; }
-
-/* Popup styling */
-:deep(.site-popup) {
-  min-width: 200px;
+:deep(.site-addition-marker.site-marker-selected .site-addition-icon) {
+  outline: 3px solid #111827;
+  outline-offset: 2px;
 }
 
-:deep(.site-popup h4) {
-  margin-top: 0;
-  color: #2c3e50;
-  border-bottom: 2px solid #3498db;
-  padding-bottom: 5px;
+@media (max-width: 1024px) {
+  .site-inspector {
+    position: absolute;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: min(74dvh, 720px);
+    padding-bottom: env(safe-area-inset-bottom);
+    border: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -5px 24px rgba(15, 23, 42, .28);
+    overflow: hidden;
+  }
+  .inspector-resize { display: none; }
 }
 
-:deep(.site-popup p) {
-  margin: 8px 0;
-  font-size: 13px;
-}
-
-:deep(.site-popup .warning) {
-  color: #c00;
-  font-weight: bold;
-  background-color: #fee;
-  padding: 5px;
-  border-radius: 3px;
-}
-
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .cluster-map-container { display: block; }
   #cluster-map { position: absolute; inset: 0; width: 100%; height: 100%; }
   .mobile-map-toolbar {
@@ -863,8 +1026,6 @@ export default {
   .stat-item { padding: 3px 0; font-size: 12px; }
   .filters label, .dem-controls label { margin-bottom: 6px; font-size: 12px; }
   .cluster-selector { padding: 10px; }
-  .leaflet-popup { max-width: calc(100vw - 24px) !important; }
-  .leaflet-popup-content-wrapper { max-width: calc(100vw - 24px); }
-  .leaflet-popup-content { width: auto !important; max-width: calc(100vw - 56px); margin: 10px; }
+  .inspector-toolbar { min-height: 44px; padding: 7px 12px; }
 }
 </style>
