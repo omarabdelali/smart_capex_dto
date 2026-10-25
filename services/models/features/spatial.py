@@ -21,6 +21,11 @@ class SpatialFeatureResult:
     neighbor_count_1km: Optional[int]
     neighbor_count_2km: Optional[int]
     neighbor_count_5km: Optional[int]
+    neighbor_count_3km: Optional[int]
+    n_2g_sites_2km: Optional[int]
+    n_3g_sites_2km: Optional[int]
+    n_4g_sites_2km: Optional[int]
+    neighbor_avg_antenna_height_m: Optional[float]
     avg_neighbor_distance_km: Optional[float]
     nearest_neighbor_distance_km: Optional[float]
     density_score: Optional[float]
@@ -47,7 +52,7 @@ class SpatialFeatureExtractor:
     These features help distinguish edge sites from interior sites.
     """
     
-    def __init__(self, sites_data: List[Dict]):
+    def __init__(self, sites_data: List[Dict], site_technologies=None, site_antenna_heights=None):
         """
         Initialize spatial feature extractor.
         
@@ -63,6 +68,8 @@ class SpatialFeatureExtractor:
             site['site_id']: site.get('cluster_id')
             for site in sites_data
         }
+        self.site_technologies = site_technologies or {}
+        self.site_antenna_heights = site_antenna_heights or {}
         
         logger.info(f"Initialized SpatialFeatureExtractor with {len(sites_data)} sites")
     
@@ -97,6 +104,11 @@ class SpatialFeatureExtractor:
                     neighbor_count_1km=0,
                     neighbor_count_2km=0,
                     neighbor_count_5km=0,
+                    neighbor_count_3km=0,
+                    n_2g_sites_2km=0,
+                    n_3g_sites_2km=0,
+                    n_4g_sites_2km=0,
+                    neighbor_avg_antenna_height_m=0.0,
                     avg_neighbor_distance_km=None,
                     nearest_neighbor_distance_km=None,
                     density_score=0.0,
@@ -116,7 +128,23 @@ class SpatialFeatureExtractor:
             # Neighbor counts
             neighbor_count_1km = int(np.sum(distances_km <= 1.0))
             neighbor_count_2km = int(np.sum(distances_km <= 2.0))
+            neighbor_count_3km = int(np.sum(distances_km <= 3.0))
             neighbor_count_5km = int(np.sum(distances_km <= 5.0))
+
+            neighbor_sites_2km = [
+                other_sites[index][0]
+                for index, distance in enumerate(distances_km)
+                if distance <= 2.0
+            ]
+            technology_counts = {
+                tech: sum(tech in self.site_technologies.get(neighbor_id, set()) for neighbor_id in neighbor_sites_2km)
+                for tech in ('2G', '3G', '4G')
+            }
+            neighbor_heights = [
+                self.site_antenna_heights[neighbor_id]
+                for neighbor_id in neighbor_sites_2km
+                if self.site_antenna_heights.get(neighbor_id) is not None
+            ]
             
             # Average distance to neighbors within 5km
             neighbors_5km = distances_km[distances_km <= 5.0]
@@ -141,6 +169,11 @@ class SpatialFeatureExtractor:
                 neighbor_count_1km=neighbor_count_1km,
                 neighbor_count_2km=neighbor_count_2km,
                 neighbor_count_5km=neighbor_count_5km,
+                neighbor_count_3km=neighbor_count_3km,
+                n_2g_sites_2km=technology_counts['2G'],
+                n_3g_sites_2km=technology_counts['3G'],
+                n_4g_sites_2km=technology_counts['4G'],
+                neighbor_avg_antenna_height_m=float(np.mean(neighbor_heights)) if neighbor_heights else 0.0,
                 avg_neighbor_distance_km=avg_neighbor_distance_km,
                 nearest_neighbor_distance_km=nearest_neighbor_distance_km,
                 density_score=density_score,
@@ -156,6 +189,11 @@ class SpatialFeatureExtractor:
                 neighbor_count_1km=None,
                 neighbor_count_2km=None,
                 neighbor_count_5km=None,
+                neighbor_count_3km=None,
+                n_2g_sites_2km=None,
+                n_3g_sites_2km=None,
+                n_4g_sites_2km=None,
+                neighbor_avg_antenna_height_m=None,
                 avg_neighbor_distance_km=None,
                 nearest_neighbor_distance_km=None,
                 density_score=None,
@@ -280,23 +318,26 @@ class SpatialFeatureExtractor:
         """
         if not result.success:
             return {
-                'neighbor_count_1km': None,
-                'neighbor_count_2km': None,
-                'neighbor_count_5km': None,
-                'avg_neighbor_distance_km': None,
-                'nearest_neighbor_distance_km': None,
-                'density_score': None,
-                'isolation_score': None,
-                'cluster_centrality': None,
+                'dist_nearest_site_m': 0,
+                'n_sites_1km': 0,
+                'n_sites_2km': 0,
+                'n_sites_3km': 0,
+                'n_2g_sites_2km': 0,
+                'n_3g_sites_2km': 0,
+                'n_4g_sites_2km': 0,
+                'neighbor_avg_antenna_height_m': 0,
             }
         
         return {
-            'dist_nearest_site_m': result.nearest_neighbor_distance_km * 1000 if result.nearest_neighbor_distance_km else None,
+            # Coincident coordinates are valid after source aggregation. Keep
+            # their true zero distance; never serialize a required DB field as
+            # None merely because the numeric value is falsy.
+            'dist_nearest_site_m': (result.nearest_neighbor_distance_km or 0) * 1000,
             'n_sites_1km': result.neighbor_count_1km,
             'n_sites_2km': result.neighbor_count_2km,
-            'n_sites_3km': result.neighbor_count_5km,  # Using 5km count as approximation for 3km
-            'n_2g_sites_2km': 0,  # TODO: Need cell plan data for technology counts
-            'n_3g_sites_2km': 0,  # TODO: Need cell plan data
-            'n_4g_sites_2km': 0,  # TODO: Need cell plan data
-            'neighbor_avg_antenna_height_m': 0,  # TODO: Need config data
+            'n_sites_3km': result.neighbor_count_3km,
+            'n_2g_sites_2km': result.n_2g_sites_2km,
+            'n_3g_sites_2km': result.n_3g_sites_2km,
+            'n_4g_sites_2km': result.n_4g_sites_2km,
+            'neighbor_avg_antenna_height_m': result.neighbor_avg_antenna_height_m,
         }

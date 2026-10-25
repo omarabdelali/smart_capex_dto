@@ -86,7 +86,14 @@ class MAOSReportLoader:
 
             with transaction.atomic():
                 MAOSMonthlyKPI.objects.bulk_create(
-                    records, batch_size=2_000, ignore_conflicts=True
+                    records,
+                    batch_size=2_000,
+                    update_conflicts=True,
+                    update_fields=[
+                        'traffic_user_avg', 'thrp_bits_dl', 'prb_util_dl_pct',
+                        'active_users_avg', 'cqi_avg',
+                    ],
+                    unique_fields=['cell', 'month_date'],
                 )
             stats['rows_submitted'] += len(records)
 

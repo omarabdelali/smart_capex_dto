@@ -79,6 +79,28 @@
               </li>
             </ul>
           </section>
+          <section v-if="features.cell_plan?.length" class="cell-plan">
+            <h4>Cell plan at this site</h4>
+            <p class="cell-plan-note">Existing cell-plan configuration is retained; additions are overlaid on the matching cell records.</p>
+            <div class="cell-plan-list">
+              <article
+                v-for="cell in features.cell_plan"
+                :key="cell.cell_id"
+                class="cell-plan-card"
+                :class="{ 'cell-plan-added': cell.is_added }"
+              >
+                <div class="cell-plan-heading">
+                  <strong>{{ cell.cell_name }}</strong>
+                  <span>{{ cell.technology }}</span>
+                  <span v-if="cell.is_added" class="cell-plan-status">{{ eventLabel(cell.event_type) }} · {{ cell.launch_date }}</span>
+                </div>
+                <div class="cell-plan-features">
+                  <span>{{ cell.band }} · {{ cell.frequency_mhz }} MHz · {{ cell.bandwidth_mhz }} MHz BW</span>
+                  <span>Azimuth {{ cell.azimuth_deg }}° · Antenna {{ cell.antenna_height_m }} m</span>
+                </div>
+              </article>
+            </div>
+          </section>
           <section v-if="features.matched_cells?.length" class="matched-cells">
             <h4>Matching cells</h4>
             <ul>
@@ -481,6 +503,16 @@ export default {
 .added-cells li { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: #1f2937; }
 .added-cells li strong { overflow-wrap: anywhere; }
 .added-cells li span { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.cell-plan { margin-top: 14px; }
+.cell-plan h4 { margin-bottom: 4px; color: #374151; font-size: 13px; }
+.cell-plan-note { margin: 0 0 8px; color: #6b7280; font-size: 11px; }
+.cell-plan-list { display: grid; gap: 6px; max-height: 220px; overflow: auto; }
+.cell-plan-card { padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; }
+.cell-plan-added { border-color: #10b981; background: #ecfdf5; }
+.cell-plan-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.cell-plan-heading strong { overflow-wrap: anywhere; }
+.cell-plan-status { color: #047857; font-weight: 600; }
+.cell-plan-features { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; color: #6b7280; font-size: 11px; }
 .matched-cells { margin-top: 12px; padding: 12px; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; }
 .matched-cells h4 { margin-bottom: 8px; color: #1d4ed8; font-size: 13px; }
 .matched-cells ul { list-style: none; display: grid; gap: 6px; }

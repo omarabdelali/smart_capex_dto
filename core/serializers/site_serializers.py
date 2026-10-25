@@ -60,6 +60,7 @@ def get_site_addition_data(site):
         event_type = 'SITE_ADDED' if site_added else TECH_EVENT_TYPES.get(cell.technology)
         if event_type:
             added_cells.append({
+                'cell_id': cell.cell_id,
                 'cell_name': cell.cell_name,
                 'technology': cell.technology,
                 'event_type': event_type,

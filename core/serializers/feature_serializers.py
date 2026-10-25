@@ -144,6 +144,7 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
     cell_count = serializers.SerializerMethodField()
     technologies = serializers.SerializerMethodField()
     added_cells = serializers.SerializerMethodField()
+    cell_plan = serializers.SerializerMethodField()
     addition_events = serializers.SerializerMethodField()
     matched_cells = serializers.SerializerMethodField()
     is_launched = serializers.SerializerMethodField()
@@ -165,6 +166,7 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
             'cell_count',
             'technologies',
             'added_cells',
+            'cell_plan',
             'addition_events',
             'matched_cells',
             'geometric',
@@ -188,6 +190,30 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
 
     def get_added_cells(self, obj):
         return get_site_addition_data(obj)['added_cells']
+
+    def get_cell_plan(self, obj):
+        """Project event labels onto the original cell-plan configuration rows."""
+        additions = {
+            item['cell_id']: item
+            for item in get_site_addition_data(obj)['added_cells']
+        }
+        return [
+            {
+                'cell_id': cell.cell_id,
+                'cell_name': cell.cell_name,
+                'technology': cell.technology,
+                'cgi': cell.cgi,
+                'frequency_mhz': cell.frequency,
+                'band': cell.band,
+                'bandwidth_mhz': cell.bandwidth_mhz,
+                'azimuth_deg': cell.azimuth,
+                'antenna_height_m': cell.antenna_height_m,
+                'is_added': cell.cell_id in additions,
+                'event_type': additions.get(cell.cell_id, {}).get('event_type'),
+                'launch_date': additions.get(cell.cell_id, {}).get('launch_date'),
+            }
+            for cell in obj.cells.all()
+        ]
 
     def get_addition_events(self, obj):
         return get_site_addition_data(obj)['events']

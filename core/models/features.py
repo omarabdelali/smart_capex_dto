@@ -17,6 +17,7 @@ class ConfigurationFeatures(BaseModel):
     Represents site configuration at launch time.
     """
     EVENT_TYPE_CHOICES = [
+        ('BASELINE', 'Existing Site Baseline'),
         ('NEW_SITE', 'New Site'),
         ('TECH_ADD', 'Technology Addition'),
         ('BAND_ADD', 'Band Addition'),

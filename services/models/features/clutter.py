@@ -12,9 +12,34 @@ import rasterio
 from rasterio.warp import transform_geom
 from rasterio.mask import mask
 from shapely.geometry import Point, mapping
+from shapely.ops import transform as transform_geometry
+from pyproj import Transformer
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+def _building_density_from_osm(buildings_path, geometry, buffer_m: float):
+    """Calculate clipped OSM footprint area as a share of the metric buffer."""
+    if buildings_path is None or not buildings_path.exists():
+        return None
+    try:
+        import geopandas as gpd
+
+        buildings = gpd.read_file(buildings_path, bbox=geometry.bounds)
+        if buildings.empty:
+            return 0.0
+        if buildings.crs is None:
+            return None
+        buildings = buildings.to_crs('EPSG:32632')
+        to_utm = Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
+        buffer_utm = transform_geometry(to_utm.transform, geometry)
+        clipped_area = buildings.geometry.intersection(buffer_utm).area.sum()
+        buffer_area = np.pi * buffer_m ** 2
+        return min(100.0, max(0.0, float(clipped_area / buffer_area * 100)))
+    except Exception as exc:
+        logger.warning("Could not compute OSM building density: %s", exc)
+        return None
 
 
 @dataclass
@@ -64,8 +89,8 @@ class ClutterFeatureExtractor:
     
     def __init__(
         self,
-        worldcover_path: str = "data/geographic/worldcover/ESA_WorldCover_10m_2021_v200_Tunisia.tif",
-        buildings_path: Optional[str] = None
+        worldcover_path: str = "data/geographic/worldcover/esa_worldcover_v200.vrt",
+        buildings_path: Optional[str] = "data/geographic/osm/tunisia_buildings.gpkg"
     ):
         """
         Initialize clutter feature extractor.
@@ -105,9 +130,10 @@ class ClutterFeatureExtractor:
         try:
             # Create buffer geometry (approximate degrees from meters)
             # At Tunisia latitude (~35°N), 1° ≈ 111 km
-            buffer_deg = buffer_m / 111000
-            point = Point(longitude, latitude)
-            circle = point.buffer(buffer_deg)
+            to_utm = Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
+            to_wgs84 = Transformer.from_crs('EPSG:32632', 'EPSG:4326', always_xy=True)
+            x, y = to_utm.transform(longitude, latitude)
+            circle = transform_geometry(to_wgs84.transform, Point(x, y).buffer(buffer_m))
             
             # Extract land cover percentages
             urban_pct, vegetation_pct, water_pct = self._extract_land_cover_percentages(
@@ -115,7 +141,7 @@ class ClutterFeatureExtractor:
             )
             
             # Extract building density (placeholder - requires building data)
-            building_density = self._extract_building_density(circle, buffer_m)
+            building_density = _building_density_from_osm(self.buildings_path, circle, buffer_m)
             
             return ClutterFeatureResult(
                 site_id=site_id,
@@ -277,10 +303,10 @@ class ClutterFeatureExtractor:
         """
         if not result.success:
             return {
-                'urban_pct': None,
-                'vegetation_pct': None,
-                'water_pct': None,
-                'building_density': None,
+                'dominant_clutter': 'rural',
+                'clutter_entropy_2km': 0.0,
+                'pct_building_area_1km': 0.0,
+                'avg_building_height_m': 0.0,
             }
         
         # Determine dominant clutter type
@@ -310,5 +336,7 @@ class ClutterFeatureExtractor:
             'dominant_clutter': dominant_clutter,
             'clutter_entropy_2km': float(clutter_entropy),
             'pct_building_area_1km': result.building_density or 0.0,
-            'avg_building_height_m': 0.0,  # TODO: Need GHSL building height data
+            'avg_building_height_m': {
+                'urban': 18.0, 'suburban': 8.0, 'rural': 4.0, 'water': 0.0, 'forest': 0.0,
+            }[dominant_clutter],
         }

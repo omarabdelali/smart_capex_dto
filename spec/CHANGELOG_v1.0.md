@@ -17,11 +17,18 @@ This changelog tracks all requirement and specification changes from v0 (initial
 
 ## Implementation Update: Added Cell Detection
 
-- Detect a cell addition when all available monthly KPIs are zero or absent before its first nonzero KPI month; evaluate cells independently, including cells in an already active technology.
-- Classify a whole site as `SITE_ADDED` only when all cell-plan technologies first have nonzero KPI in the same month; otherwise classify qualifying cell additions by technology.
+- The 2026-10-25 clarification defines an addition date as the first post-baseline monthly observation where all nine modeled KPIs are zero or absent. A later zero month does not qualify if an earlier month had nonzero KPI activity.
+- Evaluate cells independently, including cells in an already active technology. A whole site is `SITE_ADDED` only when every technology in its plan has the same qualifying observation month.
 - Provide site-aggregate, all-cell, and added-cell monthly KPI chart modes in the popup.
+- Project addition status onto matching cell-plan records by cell ID; retain precomputed site features and show cell-plan configuration beside addition dates in the map popup.
 - Provide an event-type map filter, technology-specific icons, and site/cell partial-name search that opens the matching site's popup.
 - The current imported report is LTE-only; 2G/3G event detection awaits matching MAOS history.
+
+## Implementation Update: Configuration Features (2026-10-25)
+
+- Define `tech_before` from nonzero MAOS activity before the event date and `tech_after` from technologies in the current cell plan.
+- Classify a cell addition on a previously active technology as `SECTOR_ADD`; classify a technology with no prior activity as `TECH_ADD`.
+- Keep `bands_added` blank without a dated cell-plan snapshot. Keep theoretical capacity at zero until a documented calculation and its inputs are available.
 
 ### New Model Fields
 Added three new fields to Site model for clustering support:

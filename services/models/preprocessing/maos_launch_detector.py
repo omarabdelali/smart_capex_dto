@@ -15,13 +15,13 @@ KPI_FIELDS = (
 )
 
 
-def _active(kpis) -> bool:
-    """A recorded nonzero KPI means the cell had service/activity."""
-    return any(value not in (None, 0) for value in kpis)
+def _all_zero(kpis) -> bool:
+    """A launch observation is a present KPI row whose counters are all zero/absent."""
+    return all(value in (None, 0) for value in kpis)
 
 
 class MAOSLaunchDetector:
-    """Detect cells whose KPIs were all zero/absent before their launch month."""
+    """Date additions at the first observed post-baseline month with all-zero KPIs."""
 
     def detect_and_save(self) -> Dict[str, int]:
         data_start = MAOSMonthlyKPI.objects.aggregate(first_month=Min('month_date'))['first_month']
@@ -31,27 +31,31 @@ class MAOSLaunchDetector:
                 'detected_site_technologies': 0, 'data_start': None,
             }
 
-        # Stream each cell's history and retain its first month with any nonzero KPI.
-        first_activity = {}
+        # A later zero after a nonzero month can be a temporary outage. Only
+        # the cell's first observed month can establish a zero-KPI launch date.
+        first_kpi_month = {}
         current_cell = None
         cell_event = None
+        cell_has_row = False
         rows = MAOSMonthlyKPI.objects.order_by('cell_id', 'month_date').values_list(
             'cell_id', 'month_date', *KPI_FIELDS
         )
         for row in rows.iterator(chunk_size=10_000):
             cell_id, month, *kpis = row
             if cell_id != current_cell:
-                if current_cell is not None and cell_event is not None:
-                    first_activity[current_cell] = cell_event
-                current_cell, cell_event = cell_id, None
-            if cell_event is None and _active(kpis):
-                cell_event = month
-        if current_cell is not None and cell_event is not None:
-            first_activity[current_cell] = cell_event
+                if current_cell is not None and cell_has_row:
+                    first_kpi_month[current_cell] = cell_event
+                current_cell, cell_event, cell_has_row = cell_id, None, False
+            if not cell_has_row:
+                cell_has_row = True
+                if month > data_start and _all_zero(kpis):
+                    cell_event = month
+        if current_cell is not None and cell_has_row:
+            first_kpi_month[current_cell] = cell_event
 
         # Keep per-cell additions so a new sector is detected even when its
         # technology already serves the site.
-        cell_launches = {pk: date for pk, date in first_activity.items() if date > data_start}
+        cell_launches = {pk: date for pk, date in first_kpi_month.items() if date is not None}
         cells = Cell.objects.in_bulk(cell_launches.keys())
         additions_by_site = defaultdict(list)
         cells_to_update = []
@@ -69,11 +73,13 @@ class MAOSLaunchDetector:
         # has nonzero KPI in the same month. Otherwise only qualifying cells
         # are additions, even if the site/technology was already active.
         first_by_site_technology = {}
-        first_cells = Cell.objects.filter(pk__in=first_activity.keys()).values_list(
+        first_cells = Cell.objects.filter(pk__in=first_kpi_month.keys()).values_list(
             'site_id', 'technology', 'pk'
         )
         for site_id, technology, cell_pk in first_cells.iterator(chunk_size=10_000):
-            month = first_activity[cell_pk]
+            month = first_kpi_month[cell_pk]
+            if month is None:
+                continue
             key = (site_id, technology)
             first_by_site_technology[key] = min(first_by_site_technology.get(key, month), month)
 

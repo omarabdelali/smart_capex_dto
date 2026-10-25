@@ -384,7 +384,7 @@ export default {
               return details ? `<span class="site-addition-icon event-${details[0]}">${details[1]}</span>` : '';
             }).join('');
             return L.marker(latlng, {
-              title: `${feature.properties.site_name} · ${shownEvents.map(event => event.event_type.replace('_ADDED', ' added')).join(', ')}`,
+              title: `${feature.properties.site_name} · ${feature.properties.added_cell_count} added cell(s) · ${shownEvents.map(event => event.event_type.replace('_ADDED', ' added')).join(', ')}`,
               icon: L.divIcon({
                 className: 'site-addition-marker',
                 html: `<span class="site-addition-icons">${icons}</span>`,

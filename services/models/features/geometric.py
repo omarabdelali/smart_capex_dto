@@ -23,6 +23,7 @@ class GeometricFeatureResult:
     elevation_std_1km: Optional[float]
     elevation_range_1km: Optional[float]
     elevation_mean_1km: Optional[float]
+    antenna_height_m: float
     success: bool
     error_message: Optional[str] = None
 
@@ -53,7 +54,7 @@ class GeometricFeatureExtractor:
         self.dem_processor = DEMProcessor(dem_vrt_path)
         logger.info(f"Initialized GeometricFeatureExtractor with DEM: {dem_vrt_path}")
     
-    def extract_features(self, site_id: str, latitude: float, longitude: float) -> GeometricFeatureResult:
+    def extract_features(self, site_id: str, latitude: float, longitude: float, antenna_height_m: float = 0) -> GeometricFeatureResult:
         """
         Extract all geometric features for a site.
         
@@ -84,6 +85,7 @@ class GeometricFeatureExtractor:
                 elevation_std_1km=stats.get('std'),
                 elevation_range_1km=stats.get('range'),
                 elevation_mean_1km=stats.get('mean'),
+                antenna_height_m=antenna_height_m,
                 success=True
             )
             
@@ -98,6 +100,7 @@ class GeometricFeatureExtractor:
                 elevation_std_1km=None,
                 elevation_range_1km=None,
                 elevation_mean_1km=None,
+                antenna_height_m=antenna_height_m,
                 success=False,
                 error_message=str(e)
             )
@@ -148,14 +151,14 @@ class GeometricFeatureExtractor:
         """
         if not result.success:
             return {
-                'elevation_m': None,
-                'slope_deg': None,
-                'aspect_deg': None,
-                'roughness_m': None,
+                'z_antenna_m': 0.0,
+                'terrain_slope_deg': 0.0,
+                'terrain_aspect_deg': 0.0,
+                'terrain_roughness_m': 0.0,
             }
         
         return {
-            'z_antenna_m': result.elevation_m,  # Note: antenna height added later in config
+            'z_antenna_m': result.elevation_m + result.antenna_height_m if result.elevation_m is not None else None,
             'terrain_slope_deg': result.slope_deg,
             'terrain_aspect_deg': result.aspect_deg,
             'terrain_roughness_m': result.roughness_m,

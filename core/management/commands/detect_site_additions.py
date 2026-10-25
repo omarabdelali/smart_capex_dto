@@ -6,7 +6,7 @@ from services.models.preprocessing.maos_launch_detector import MAOSLaunchDetecto
 
 
 class Command(BaseCommand):
-    help = 'Detect first-activity 2G, 3G, LTE, and site additions from MAOS history'
+    help = 'Detect additions at the first post-baseline MAOS month with all-zero KPIs'
 
     def handle(self, *args, **options):
         try:

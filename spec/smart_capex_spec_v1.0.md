@@ -10,6 +10,7 @@
   - Added Tunisia boundary validation requirement
   - Specified 50m deduplication threshold for sites
   - Updated cluster feature computation requirements
+- **Configuration clarification (2026-10-25)**: Defined pre-event technology status from nonzero MAOS history, current-plan after status, event classification, and unavailable historical band/capacity values.
 
 - **v0 (2026-10-23)**: Initial specification draft
 
@@ -60,17 +61,42 @@ project_smart_capex/
 ## 3. Feature Set (55 Features Total)
 
 ### 3.1 Configuration Features (10 features)
-Site configuration at launch time:
-1. `event_type`: Categorical (NEW_SITE, TECH_ADD, BAND_ADD, etc.)
-2. `tech_added`: Technology added (2G/3G/4G)
-3. `tech_before`: Binary vector [has_2g, has_3g, has_4g]
-4. `tech_after`: Binary vector [has_2g, has_3g, has_4g]
-5. `bands_added`: Comma-separated band list
-6. `sector_count_after`: Number of sectors (1-3)
-7. `cells_per_sector_after`: Average cells per sector
-8. `antenna_height_m`: Average antenna height (10-55m)
-9. `total_bw_after_mhz`: Total bandwidth after event
-10. `total_capacity_after_mbps`: Theoretical capacity
+Configuration is summarized from the current cell plan and the MAOS history
+available before the detected event. A launch observation is the first month
+in which the object's recorded KPIs are all zero or absent; this is the event
+date stored by addition detection. For monthly data, the stored date is the
+month date, not an inferred day within that month.
+
+1. `event_type`: `NEW_SITE` when all technologies in the site plan launch in
+   the same month; `TECH_ADD` when the event introduces a technology with no
+   pre-event MAOS KPI activity; `SECTOR_ADD` when a cell is added on a
+   technology with prior activity; otherwise `BASELINE`. `BAND_ADD`,
+   `CAPACITY_ADD`, and `TECH_SUNSET` are reserved until historical cell-plan
+   snapshots or explicit event records are available.
+2. `tech_added`: The sole newly serving technology (2G/3G/4G), when exactly
+   one can be identified; blank for multiple or no technologies.
+3. `tech_before`: Binary vector `[has_2g, has_3g, has_4g]`, true only when a
+   pre-event MAOS record for that technology has at least one nonzero KPI.
+   Zero/absent-only history does not count as prior service.
+4. `tech_after`: Binary vector `[has_2g, has_3g, has_4g]` from technologies
+   present in the current cell plan.
+5. `bands_added`: Historical band additions. Leave blank when there is no
+   pre-event cell-plan snapshot to establish that a band is new; current band
+   names alone are not evidence of an addition.
+6. `sector_count_after`: Number of distinct azimuth directions in the current
+   plan; azimuths are grouped to the nearest 5 degrees.
+7. `cells_per_sector_after`: Current cell count divided by sector count.
+8. `antenna_height_m`: Mean antenna height across current cell-plan rows.
+9. `total_bw_after_mhz`: Sum of configured bandwidth across current cell-plan
+   rows.
+10. `total_capacity_after_mbps`: Reserved theoretical capacity value. Store
+    zero until a documented capacity formula and its required spectral
+    efficiency/vendor inputs are available; do not present zero as measured
+    capacity.
+
+The current cell plan describes the after state only. Exact historical bands,
+capacity changes, and sunset events require dated cell-plan snapshots or an
+event ledger. Missing history must not be inferred from the present plan.
 
 ### 3.2 Geometric Features (4 features)
 DEM-derived terrain characteristics:
@@ -227,16 +253,16 @@ For each site, compute 6 cluster-level features:
 - **Source**: Huawei MAOS monthly counters
 - **Format**: CSV/Excel with monthly aggregates per cell
 - **Key Counters**: Traffic (DL/UL), Users, PRB util, CQI, RSRP
-- **Launch Detection**: KPI-based (traffic > 0 with no prior history)
+- **Launch Detection**: KPI-observation-based. The event date is the first monthly observation in which all nine modeled KPIs for the object are zero or absent; the first collected month is the observation baseline and cannot itself establish a later addition.
 
 #### Cell Addition Detection
-  - Current rule: evaluate each cell independently across all available MAOS KPI fields. A cell is added when every KPI was zero or absent in every available month before its first nonzero KPI month.
-  - The first available MAOS month is the observation baseline; a launch must occur strictly after it. Detect qualifying new cells even when the same technology already serves the site.
-  - Classify a whole site as `SITE_ADDED` only when every technology in its cell plan first has nonzero KPI in the same month. Otherwise classify added-cell events as `LTE_ADDED`, `3G_ADDED`, or `2G_ADDED`.
+  - Evaluate each cell independently across all nine modeled KPI fields. A cell's addition date is its first monthly observation where all KPIs are zero or absent, provided that observation is after the first collected month; do not wait for a subsequent nonzero month to date the addition.
+  - Detect qualifying new cells even when the same technology already serves the site. Classify a whole site as `SITE_ADDED` only when all technologies in its cell plan have the same qualifying zero-KPI observation month. Otherwise classify added-cell events by technology.
   - The popup supports both site aggregates and per-cell monthly KPI series, with detected cells highlighted.
-- Evaluate all available monthly MAOS KPI fields per cell; any nonzero KPI is activity.
-- A cell is considered added when its first nonzero KPI month is strictly after the dataset start and all earlier KPI values were zero or absent.
-- If every technology currently present at a site has the same first active month, classify the event as `SITE_ADDED`. Otherwise classify events as `LTE_ADDED`, `3G_ADDED`, or `2G_ADDED`.
+    - Detection results are joined to existing cell-plan cell IDs. Map markers use addition icons while their popups retain the site's previously calculated terrain, clutter, spatial, ANP, and KPI features and show cell-plan configuration for each sector.
+- Evaluate all nine modeled monthly MAOS KPI fields per cell. The addition date is the first post-baseline month with all KPI values zero or absent.
+- A cell with any nonzero KPI in an earlier month is not considered newly added at a later zero month.
+- If every technology currently present at a site has the same qualifying zero-KPI observation month, classify the event as `SITE_ADDED`; otherwise classify detected cell events by technology.
 - A technology can have a newly added cell even if it was already active through another cell.
 - Store the detected month on each added cell; a new site stores its common first-activity month.
 - The map provides distinct event icons and an event-type filter. Site and cell name searches open the matching site's popup and identify matching cells.

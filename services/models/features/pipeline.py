@@ -8,8 +8,9 @@ import logging
 from datetime import datetime
 
 from django.db import transaction
+from django.db.models import Avg, Q
 
-from core.models import Site
+from core.models import Cell, Site
 from core.models.features import (
     ConfigurationFeatures,
     GeometricFeatures,
@@ -25,6 +26,7 @@ from .clutter import ClutterFeatureExtractor
 from .spatial import SpatialFeatureExtractor
 from .anp import ANPComputer
 from .kpi import KPIFeatureExtractor
+from .context import cluster_feature_map, configuration_feature_values, prelaunch_maos_values
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ class FeatureExtractionPipeline:
     def __init__(
         self,
         dem_vrt_path: str = "data/geographic/dem/copernicus_glo30.vrt",
-        worldcover_path: str = "data/geographic/worldcover/ESA_WorldCover_10m_2021_v200_Tunisia.tif",
+        worldcover_path: str = "data/geographic/worldcover/esa_worldcover_v200.vrt",
         maos_csv_path: Optional[str] = None
     ):
         """
@@ -103,19 +105,41 @@ class FeatureExtractionPipeline:
         
         # Filter out sites with existing features if requested
         if skip_existing:
-            sites = sites.filter(geometric_features__isnull=True)
+            sites = sites.filter(
+                Q(geometric_features__isnull=True)
+                | Q(clutter_features__isnull=True)
+                | Q(spatial_features__isnull=True)
+                | Q(anp_features__isnull=True)
+                | Q(config_features__isnull=True)
+                | Q(cluster_features__isnull=True)
+                | (Q(is_launched=True) & Q(kpi_features__isnull=True))
+            )
             logger.info(f"{sites.count()} sites need feature extraction (skipping {total_sites - sites.count()} with existing features)")
         
         if sites.count() == 0:
             logger.info("No sites to process")
             return {'total': 0, 'successful': 0, 'failed': 0}
         
-        # Prepare site data for spatial/ANP extractors
-        sites_data = list(sites.values('site_id', 'latitude', 'longitude', 'cluster_id'))
+        # Neighbors and cluster context must be computed against the complete network,
+        # even when extraction is requested for one cluster or a few site IDs.
+        sites_data = list(Site.objects.values('site_id', 'latitude', 'longitude', 'cluster_id'))
+        sites = sites.prefetch_related('cells')
+        technology_by_site = {}
+        for row in Cell.objects.values('site__site_id', 'technology').distinct():
+            technology_by_site.setdefault(row['site__site_id'], set()).add(row['technology'])
+        antenna_by_site = {
+            row['site__site_id']: row['height']
+            for row in Cell.objects.values('site__site_id').annotate(height=Avg('antenna_height_m'))
+        }
         
         # Initialize spatial and ANP extractors (need all sites data)
-        spatial_extractor = SpatialFeatureExtractor(sites_data)
+        spatial_extractor = SpatialFeatureExtractor(
+            sites_data,
+            site_technologies=technology_by_site,
+            site_antenna_heights=antenna_by_site,
+        )
         anp_computer = ANPComputer()
+        cluster_features = cluster_feature_map(sites_data)
         
         # Track statistics
         stats = {
@@ -127,6 +151,9 @@ class FeatureExtractionPipeline:
             'spatial_failures': 0,
             'anp_failures': 0,
             'kpi_failures': 0,
+            'configuration_failures': 0,
+            'cluster_failures': 0,
+            'maos_features': 0,
         }
         
         # Process each site
@@ -135,9 +162,11 @@ class FeatureExtractionPipeline:
                 logger.info(f"Processing site {site.site_id} ({idx}/{stats['total']})...")
                 
                 with transaction.atomic():
+                    configuration_values = configuration_feature_values(site)
                     # 1. Geometric features (DEM-based)
                     geo_result = self.geometric_extractor.extract_features(
-                        site.site_id, site.latitude, site.longitude
+                        site.site_id, site.latitude, site.longitude,
+                        antenna_height_m=configuration_values['antenna_height_m'],
                     )
                     if not geo_result.success:
                         stats['geometric_failures'] += 1
@@ -189,9 +218,19 @@ class FeatureExtractionPipeline:
                             site=site,
                             defaults=self.kpi_extractor.to_dict(kpi_result)
                         )
-                    
-                    # 6. Configuration features (from cell plan - already populated)
-                    # 7. Cluster features (from clustering - already populated)
+                    else:
+                        maos_values = prelaunch_maos_values(site)
+                        if maos_values:
+                            KPIFeatures.objects.update_or_create(site=site, defaults=maos_values)
+                            stats['maos_features'] += 1
+
+                    ConfigurationFeatures.objects.update_or_create(
+                        site=site, defaults=configuration_values
+                    )
+                    ClusterFeatures.objects.update_or_create(
+                        site=site,
+                        defaults={'cluster_id': site.cluster_id, **cluster_features[site.site_id]},
+                    )
                     
                     stats['successful'] += 1
                     logger.info(f"✓ Site {site.site_id} features extracted successfully")
@@ -210,6 +249,7 @@ class FeatureExtractionPipeline:
         logger.info(f"  Spatial failures: {stats['spatial_failures']}")
         logger.info(f"  ANP failures: {stats['anp_failures']}")
         logger.info(f"  KPI failures: {stats['kpi_failures']}")
+        logger.info(f"  Pre-launch MAOS feature records: {stats['maos_features']}")
         
         return stats
     

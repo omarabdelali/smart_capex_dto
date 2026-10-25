@@ -95,10 +95,11 @@ class Command(BaseCommand):
             self.stdout.write("="*60)
             
             self.stdout.write(f"Total sites processed: {stats['total']}")
-            self.stdout.write(self.style.SUCCESS(f"✓ Successful: {stats['successful']}"))
+            # ASCII-only labels keep this report compatible with Windows consoles.
+            self.stdout.write(self.style.SUCCESS(f"Successful: {stats['successful']}"))
             
             if stats['failed'] > 0:
-                self.stdout.write(self.style.ERROR(f"✗ Failed: {stats['failed']}"))
+                self.stdout.write(self.style.ERROR(f"Failed: {stats['failed']}"))
             
             # Display feature-specific failures
             if stats.get('geometric_failures', 0) > 0:
