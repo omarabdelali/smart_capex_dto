@@ -23,6 +23,7 @@ Reference: Spec Section 8 (Similarity Metric)
 """
 
 import numpy as np
+import math
 from typing import Dict, List, Optional, Tuple
 import logging
 
@@ -57,6 +58,10 @@ class GowerDistance:
         # Spatial (8 features)
         'dist_nearest_site_m', 'n_sites_1km', 'n_sites_2km', 'n_sites_3km',
         'n_2g_sites_2km', 'n_3g_sites_2km', 'n_4g_sites_2km', 'neighbor_avg_antenna_height_m',
+        'population_density_1km_per_km2',
+        'population_tier1', 'population_tier2',
+        'road_km_total', 'road_km_weighted', 'road_density_weighted_km_km2',
+        'highway_km', 'highway_share', 'n_road_intersections',
         
         # ANP (15 features - all numeric)
         'n_tier1', 'n_tier2', 't1_to_t2_ratio', 't1_nearest_m', 't2_nearest_m',
@@ -69,6 +74,12 @@ class GowerDistance:
         'avg_traffic_dl_gb', 'avg_traffic_ul_gb', 'avg_users', 'avg_prb_util_pct',
         'peak_hour_traffic_gb', 'peak_hour_users', 'avg_cqi', 'avg_rsrp_dbm',
         'congestion_hours_per_day',
+
+        # Report-backed LTE pre-event performance profile
+        'pre_dl_traffic_gb_day', 'pre_active_users', 'pre_traffic_users',
+        'pre_prb_util_dl_pct', 'pre_cqi_avg', 'pre_dl_throughput_kbps',
+        'pre_dl_packet_delay_ms', 'pre_cell_availability_pct',
+        'pre_traffic_trend_3m_pct', 'pre_prb_trend_3m_pct',
         
         # Cluster (6 features)
         'cluster_size', 'cluster_density_sites_per_km2', 'cluster_avg_traffic_gb',
@@ -76,6 +87,7 @@ class GowerDistance:
     ]
     
     CATEGORICAL_FEATURES = [
+        'dominant_road_class',
         # Configuration
         'event_type', 'tech_added', 'bands_added',
         'tech_before_2g', 'tech_before_3g', 'tech_before_4g',
@@ -123,12 +135,20 @@ class GowerDistance:
         total_distance = 0.0
         total_weight = 0.0
         
-        # Get all feature names from both vectors
-        all_features = set(x1.keys()).union(set(x2.keys()))
+        # Ignore identifiers and profile-quality metadata; only declared
+        # similarity features should contribute to the distance.
+        supported_features = set(self.NUMERIC_FEATURES + self.CATEGORICAL_FEATURES)
+        if feature_weights:
+            supported_features.update(feature_weights)
+        all_features = supported_features.intersection(x1).intersection(x2)
         
         for feature in all_features:
+            if self._get_feature_group(feature) == 'road_context' and (not feature_weights or feature not in feature_weights):
+                continue
             # Skip if feature missing in either vector
             if feature not in x1 or feature not in x2:
+                continue
+            if self._is_missing(x1[feature]) or self._is_missing(x2[feature]):
                 continue
             
             # Get feature weight
@@ -191,9 +211,7 @@ class GowerDistance:
         Returns:
             Distance in [0, 1]
         """
-        # Handle missing values
-        if val1 is None or val2 is None:
-            return 1.0
+        # Missing values are omitted from the weighted distance denominator.
         
         # Categorical features
         if feature in self.CATEGORICAL_FEATURES or isinstance(val1, str):
@@ -210,7 +228,7 @@ class GowerDistance:
                     return 0.0  # No variation in this feature
                 
                 # Normalized Manhattan distance
-                return abs(val1 - val2) / range_val
+                return min(1.0, abs(val1 - val2) / range_val)
             else:
                 # If range not provided, use raw difference (not ideal)
                 logger.warning(f"No range provided for feature {feature}, using raw difference")
@@ -218,6 +236,16 @@ class GowerDistance:
         
         # Unknown feature type - treat as categorical
         return 0.0 if val1 == val2 else 1.0
+
+    @staticmethod
+    def _is_missing(value):
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return not value.strip()
+        if isinstance(value, (float, np.floating)):
+            return not math.isfinite(float(value))
+        return False
     
     def _get_feature_weight(
         self,
@@ -253,6 +281,21 @@ class GowerDistance:
     
     def _get_feature_group(self, feature: str) -> str:
         """Map feature name to its group."""
+        if feature in {'road_km_total','road_km_weighted','road_density_weighted_km_km2',
+                       'highway_km','highway_share','n_road_intersections','dominant_road_class'}:
+            return 'road_context'
+        if feature.startswith('population_'):
+            return 'population'
+        # Cluster summaries can contain KPI words (e.g. traffic/users), so
+        # classify them before the general pre-launch KPI name matching.
+        if 'cluster' in feature:
+            return 'cluster'
+        if feature.startswith('pre_') or feature in {
+            'avg_traffic_dl_gb', 'avg_traffic_ul_gb', 'avg_users', 'avg_prb_util_pct',
+            'peak_hour_traffic_gb', 'peak_hour_users', 'avg_cqi', 'avg_rsrp_dbm',
+            'congestion_hours_per_day',
+        }:
+            return 'prelaunch'
         # Configuration features
         if any(x in feature for x in ['event_type', 'tech_', 'band', 'sector', 'cells_per_sector',
                                        'antenna_height', 'bw_', 'capacity_']):
@@ -272,9 +315,6 @@ class GowerDistance:
             return 'spatial'
         
         # Cluster features
-        if 'cluster' in feature:
-            return 'cluster'
-        
         # Clutter features
         if any(x in feature for x in ['clutter', 'building', 'z_antenna', 'terrain']):
             return 'clutter'
@@ -296,15 +336,16 @@ class GowerDistance:
         
         for feature_vec in features:
             for feature in self.NUMERIC_FEATURES:
-                if feature in feature_vec and feature_vec[feature] is not None:
+                if feature in feature_vec and not self._is_missing(feature_vec[feature]):
                     feature_values[feature].append(feature_vec[feature])
         
         # Compute min/max for each feature
         self.feature_ranges = {}
         for feature, values in feature_values.items():
             if values:
-                self.feature_ranges[feature] = (min(values), max(values))
-                logger.debug(f"Feature {feature}: range [{min(values):.2f}, {max(values):.2f}]")
+                low, high = np.percentile(values, [5, 95])
+                self.feature_ranges[feature] = (float(low), float(high))
+                logger.debug(f"Feature {feature}: robust range [{low:.2f}, {high:.2f}]")
         
         logger.info(f"Computed ranges for {len(self.feature_ranges)} features")
     

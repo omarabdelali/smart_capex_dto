@@ -13,6 +13,7 @@ from .features import (
     ANPFeatures,
     ClusterFeatures,
     KPIFeatures,
+    RoadFeatures,
 )
 from .kpi import PreLaunchKPI, MAOSMonthlyKPI
 from .feature_sync import FeatureSyncJob
@@ -27,6 +28,7 @@ __all__ = [
     'ANPFeatures',
     'ClusterFeatures',
     'KPIFeatures',
+    'RoadFeatures',
     'PreLaunchKPI',
     'MAOSMonthlyKPI',
     'FeatureSyncJob',

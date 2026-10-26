@@ -27,6 +27,7 @@ from .spatial import SpatialFeatureExtractor
 from .anp import ANPComputer
 from .kpi import KPIFeatureExtractor
 from .context import cluster_feature_map, configuration_feature_values, prelaunch_maos_values
+from .road_features import RoadFeatureExtractor, save_site_roads
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class FeatureExtractionPipeline:
         # Initialize extractors
         self.geometric_extractor = GeometricFeatureExtractor(dem_vrt_path)
         self.clutter_extractor = ClutterFeatureExtractor(worldcover_path)
+        self.road_extractor = RoadFeatureExtractor()
         
         # KPI extractor (optional - only if MAOS data available)
         self.kpi_extractor = None
@@ -113,6 +115,7 @@ class FeatureExtractionPipeline:
                 | Q(anp_features__isnull=True)
                 | Q(config_features__isnull=True)
                 | Q(cluster_features__isnull=True)
+                | Q(road_features__isnull=True)
                 | (Q(is_launched=True) & Q(kpi_features__isnull=True))
             )
             logger.info(f"{sites.count()} sites need feature extraction (skipping {total_sites - sites.count()} with existing features)")
@@ -155,6 +158,7 @@ class FeatureExtractionPipeline:
             'configuration_failures': 0,
             'cluster_failures': 0,
             'maos_features': 0,
+            'road_computed': 0, 'road_null': 0, 'road_failures': 0,
         }
         
         # Process each site
@@ -166,6 +170,11 @@ class FeatureExtractionPipeline:
                 
                 with transaction.atomic():
                     configuration_values = configuration_feature_values(site)
+                    try:
+                        road_values = save_site_roads(site, self.road_extractor)
+                    except Exception:
+                        stats['road_failures'] += 1
+                        raise
                     # 1. Geometric features (DEM-based)
                     geo_result = self.geometric_extractor.extract_features(
                         site.site_id, site.latitude, site.longitude,
@@ -236,6 +245,7 @@ class FeatureExtractionPipeline:
                     )
                     
                     stats['successful'] += 1
+                    stats['road_null' if road_values['road_km_total'] is None else 'road_computed'] += 1
                     logger.info(f"✓ Site {site.site_id} features extracted successfully")
                     
             except Exception as e:

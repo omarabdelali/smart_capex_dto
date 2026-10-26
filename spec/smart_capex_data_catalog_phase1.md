@@ -1,5 +1,38 @@
 # Smart CAPEX Phase 1 Data Catalog
 
+## Road source and persisted features (2026-10-26)
+
+- Source: existing `data/geographic/osm/tunisia.gpkg`, `gis_osm_roads_free`; source class field `fclass`. Local archive: `data/geographic/osm/tunisia-latest-free.gpkg.zip`. README attests data as of **2026-10-22T20:21:33Z**, verified by matching the archived GeoPackage SHA-256 to the imported file. No download performed; historic download date unknown. Recorded URL: https://download.geofabrik.de/africa/tunisia-latest-free.gpkg.zip . Normalized/prepared on 2026-10-26; all rows store extract date 2026-10-22.
+- Licence: ODbL 1.0, attribution **© OpenStreetMap contributors; Geofabrik**. Retain attribution and applicable derived-database obligations when distributing data.
+- Source SHA-256: `2a149398d4d13f78def1189299110a3ef18c4dc9da20401f3b4f51a659f7ba8f`.
+- Normalized EPSG:32632 file: `data/geographic/osm/roads_utm32_2a149398d4d1.gpkg`, layer `roads`, spatial index enabled. SHA-256: `66ac9c0aa0bf1ac8e34a031dd770000127aeccf261389d0847a573c62eb84a72`. Manifest is stored alongside it as JSON. Source normalization retains 397,936 road features including any-class coverage evidence. `_link` maps to parent; retained length classes are motorway, trunk, primary, secondary, tertiary, residential, unclassified.
+- Optional attributes retained: maxspeed, bridge, tunnel, layer; lanes absent → NULL. Original OSM-node topology is unavailable.
+- Configuration: `config/road_context.json`; priors motorway/trunk 1, primary .7, secondary .5, tertiary .3, residential/unclassified .1, unknown .05 (excluded unknown classes). Calibration: **prior, uncalibrated**. Similarity road cap .05 is also an uncalibrated safeguard.
+- Persisted fields: `road_km_total`, `road_km_weighted`, `road_density_weighted_km_km2`, `highway_km`, `highway_share` (0–1), `n_road_intersections` (estimated), `dominant_road_class`; source/hash, buffer, method/weights versions, coverage status, class lengths and update timestamp. See `feature_eng.md` for exact formulas and topology limits.
+- No source road within 5 km → all measurements NULL; nearby mapping with no retained class in 1 km → zero lengths/counts, NULL share/dominant. One buffer per site; revisit duplicate contributions before any cell-wedge footprint implementation.
+- Actual backfill: 3,441 sites; 3,440 computed (including ten zero-length sites), one NULL (KEB_0044 / 5295), zero errors. Seven new dimensions bring the scalar registry to 80 (68 numeric, 12 categorical).
+- Correlation/VIF report: `docs/verification/roads/diagnostics.json`. Weighted length and density are exact duplicates at fixed buffer area; keep optional. Historical predictive ablation is blocked because the 2026-10-22 source postdates the historical launches and earlier snapshots are absent; no KPI errors or model gains are asserted.
+
+## Latest coastal coverage correction (2026-10-26)
+
+This supersedes the 90%-coverage exclusion rule below. Population fields now return the mapped fractional-overlap count whenever source population cells exist. Partial land coverage is disclosed in `quality` (site inspector) / `population_quality` (similarity and CBR) with per-catchment `coverage`, `land_coverage`, `water_pct`, `status` and `observed_population`. Independently identified WorldCover water supports coverage; unknown land is never filled or extrapolated. Density divides mapped counts by full catchment area. Ninety percent overall and land coverage marks complete status; lower coverage returns supported numeric values explicitly labeled partial. With no supported cells or known water, values remain unavailable.
+
+For BIZ_0033: density ≈2,841.7 people/km², T1 ≈27,089.8 people and T2 ≈56,588.7 people; these are partial mapped estimates with land coverage ≈72.7%, 78.8% and 74.3% respectively, not complete catchment totals.
+
+## Population similarity extension (2026-10-26)
+
+Source: local `data/geographic/ghsl/ghs_pop_e2025_r2023a_54009_100_v1_0_tun.tif`, GHSL R2023A epoch 2025, native 100 m Mollweide equal-area grid, residents per cell; nodata -200. Computed on demand in `services/models/features/population.py` with fractional cell-overlap weighting and at least 90% valid coverage per catchment.
+
+| Field | Unit | Spatial support | Availability / consumer |
+|---|---|---|---|
+| `population_density_1km_per_km2` | people/km² | 0–1 km disk | Similarity/CBR numeric feature, missing before 2025 or insufficient coverage |
+| `population_tier1` | people | 0–2 km disk | Similarity/CBR numeric feature; picker/comparison, CBR page and current site inspector |
+| `population_tier2` | people | 2–5 km annulus excluding T1 | Same; independently subject to coverage/epoch rules |
+
+Measured zero is retained; missing remains NULL in API vectors. Population is fixed 2025 modeled context, not historical event-time reconstruction. Current inspector values are source-labeled and separate from as-of eligibility. Numeric/categorical similarity schema now has 62/11 declared dimensions. Existing deselected-feature behavior is retained until production.
+
+Historical features use the three complete pre-event calendar months. Current configuration and undated legacy fields do not supply historical inputs. Neighbor/ANP/cluster context is rebuilt from pre-event LTE activity; CBR cases and outcome months must precede the query event month. See `feature_eng.md` for formulas and source limitations.
+
 **Version:** 1.1
 **Date:** 2026-10-23
 **Scope:** 2G / 3G / 4G Feature Data Sources & Requirements
@@ -20,6 +53,7 @@
 9. [Phase 2 Exclusions](#9-phase-2-exclusions)
 10. [Data Quality Requirements](#10-data-quality-requirements)
 11. [Known Limitations](#11-known-limitations)
+12. [LTE Monthly Operational KPI Extension](#12-lte-monthly-operational-kpi-extension-increment-1)
 
 ---
 
@@ -43,7 +77,7 @@ This catalog maps all 56 Phase 1 features to their data sources, formulas, and a
 | **GHSL Built Heights**          | GeoTIFF              | Static           | ✓ Available  | 100m mean building height (GHS-BUILT-H R2023A)           |
 | **IMEI-Subscriber DB**          | Database             | Real-time        | ✗ Phase 2    | Required for device segmentation                         |
 
-**Source File:** smart_capex_LTE_daily_1792747652750.xml (MAOS counter definitions)
+**Source Files:** `spec/data_spec/smart_capex_LTE_daily_1792747652750.xml` (report counter selection), `eRAN_KPI_Reference_22.1.xlsx`, and `counter_summary_ratL_22.1_en.xlsx`. The monthly CSV export contains 132 report-selected counter headers plus report metadata/derived columns.
 
 ---
 
@@ -387,3 +421,21 @@ def compute_anp(site, all_sites, tier1_m=2000, tier2_m=5000):
         'n_tier2': len(tier2),
         't1_to_t2_ratio': len(tier1) / max(len(tier2), 1),
         't1_nearest_m': min((n['dist'] for n in tier1), default=tier1_m),
+    }
+```
+
+## 12. LTE Monthly Operational KPI Extension (Increment 1)
+
+This operational profile is an extension for analysis and similarity inputs; it does not silently redefine the existing 55-feature specification. It uses fields confirmed in the monthly LTE CSV and records unobservable KPIs as NULL rather than zero.
+
+| Cell-month measure | CSV input(s) | Derivation / aggregation basis |
+| --- | --- | --- |
+| Downlink traffic | `L.Thrp.bits.DL(bit)` | Retain raw bits; site/cluster values sum cell counters. |
+| Average users and active users | `L.Traffic.User.Avg`, `L.Traffic.ActiveUser.Avg` | Retain cell averages; site/cluster sum concurrent cell averages for network-level totals. |
+| DL PRB utilization | `L.ChMeas.PRB.DL.Used.Avg`, `L.ChMeas.PRB.DL.Avail` | `used / available * 100`; retain both inputs so rollups use `sum(used) / sum(available)`. |
+| CQI | `L.ChMeas.CQI.DL.0` through `.15` | Weighted mean from the 16-bin histogram; retain weighted sum and sample count for rollups. |
+| DL throughput | `L.Thrp.bits.DL(bit)`, `L.Thrp.bits.DL.LastTTI(bit)`, `L.Thrp.Time.DL.RmvLastTTI(ms)` | `(DL bits - LastTTI bits) / milliseconds` gives kbit/s; retain components for weighted rollups, as defined in the eRAN KPI reference. |
+| DL packet delay | `L.Traffic.DL.PktDelay.Time(ms)`, `L.Traffic.DL.PktDelay.Num(packet)` | `delay time / packet count` in ms; retain both components for weighted rollups. |
+| Cell availability | `L.Cell.Unavail.Dur.Sys(s)` | `100 * (1 - downtime / calendar month seconds)`; retain downtime and observation duration for rollups. |
+
+Current LTE export limitations: UL throughput, UL PRB, downlink RSRP average, RRC connection average, and several accessibility/handover rates are not derived from this report. A KPI in the reference workbook is not considered populated unless its input counters are actually present in the export.

@@ -1,5 +1,43 @@
 # Smart CAPEX Specification v1.0
 
+Documentation reconciliation (2026-10-26): `feature_eng.md` is the consolidated current calculation reference for all 80 scalar dimensions, partial population coverage, optional roads, actual weighting and historical/CBR rules. Earlier feature-count and coverage-policy amendments are historical; this documentation update changes no application behavior.
+
+## Persisted road feature group (2026-10-26)
+
+- Canonical scalar similarity schema: **80 dimensions, 68 numeric and 12 categorical**, including seven road dimensions. Earlier 55/56/60 feature counts are historical design counts, not the current implemented scalar registry.
+- Persist six nullable numeric road measurements and categorical dominant class in `RoadFeatures`: total/weighted length, weighted density, motorway+trunk length/share, and estimated degree≥3 junction count. Use a 1 km UTM 32N buffer, configured class priors, spatial index and clipped line overlay. Keep any-class 5 km source coverage evidence separate from retained-class measurement.
+- With no source road within 5 km, measurements stay NULL. With coverage evidence and no retained roads inside 1 km, zero lengths/counts are valid; share and dominant class remain NULL.
+- Keep source/hash/buffer/extract-date/method/weight versions and class lengths. Exact original OSM-node degree is unavailable from the free line extract; label the grade-aware geometry count as a junction estimate.
+- Both feature sync modes recompute roads. Provide a Roads inspector tab with values, bars, source attribution and limitations; include the group in similarity picker/comparisons and dimensions-used reports.
+- Roads default off, require explicit opt-in and compatible provenance, and have a configured uncalibrated 5% group cap. Support API/picker `equal_per_feature` (default, legacy non-road behavior retained) and `equal_per_group`; show actual normalized pairwise weights.
+- Archive README and source hash establish extract date 2026-10-22. Do not assign this later snapshot to earlier CBR events. Current-context retrieval is exploratory. Predictive ablation remains blocked pending earlier snapshots; diagnostics do not establish prediction accuracy or justify default-on.
+
+## Latest population coverage and CBR cohort rules (2026-10-26)
+
+These rules supersede earlier coverage suppression and cohort aggregation text below.
+
+- Population belongs in a separate site-inspector tab, not Overview. Show 1 km density and T1/T2 mapped counts, units, source epoch and land/water coverage.
+- Return calculated sums from valid population cells even under partial coverage, labeled **partial mapped estimates**, without extrapolating missing land. Density uses full geometric catchment area. Independently classify water with WorldCover; at least 90% overall and land coverage gives complete status, not a prerequisite for displaying a supported count. Entirely unknown land remains unavailable.
+- Expose population coverage/status in API metadata and similarity/CBR UI. Partial mapped inputs may understate full catchment population; source-epoch eligibility is unchanged.
+- CBR additive baselines are sums of recipient medians; nonadditive baselines and observations are means of site KPIs, consistent with predicted mean site changes. Use a fixed baseline-eligible cohort and omit incomplete observed totals.
+- Bound absolute predictions/intervals at zero, and CQI at 15. Show actual null gaps, a bootstrap confidence band and monthly analog/cohort support; do not connect unsupported horizons.
+
+## Tier population and historical snapshots (2026-10-26)
+
+- Add `population_tier1` (people in 0–2 km disk) and `population_tier2` (people in separate 2–5 km ring), using fractional overlap of the existing 100 m GHSL source. Require 90% valid coverage independently. Retain 1 km density; expose all fields and units in feature selection, comparisons, site inspector and CBR UI.
+- Exclude epoch-2025 population before 2025. Mark unsupported event-time configuration/building/clutter and undated legacy values missing instead of reusing current measurements.
+- Use three complete calendar months before event-month start; completeness includes calendar gaps. Reconstruct spatial, ANP and cluster context using pre-event LTE activity, with stable coordinates/terrain as explicit assumptions. No current cluster IDs contribute to distance.
+- For CBR, analog launch and completed outcome month must precede the query event month. Require two available outcomes per metric/horizon; later query observations are display-only. Reconstruct cluster recipients from pre-event activity.
+- Preserve existing deselected-feature behavior until production. Full formulas, limitations and validation are in `feature_eng.md`.
+
+## Population context (2026-10-26)
+
+- Preserve deselected features and existing calculation behavior until production; defer the audit's selected-feature correction.
+- Offer an optional Tunisia population-density map overlay, independent opacity and density legend, using existing GHSL GHS-POP R2023A epoch-2025 **100 m** cells. User selected native 100 m with detailed zoom; do not label zoomed pixels as 10 m population precision.
+- Include `population_density_1km_per_km2` in the numeric similarity schema and CBR ranking. In a locally constructed 1 km circle, sum native population counts apportioned by fractional cell overlap, then divide by valid overlap area in km². Require at least 90% valid coverage; missing remains missing and observed zero remains zero.
+- Use existing robust numeric scaling and requested per-feature weighting. Show population under a separate source-labeled feature group. Population is static 2025 context for historical cases, not reconstructed event-time population.
+- Serve population PNG tiles at `/api/population/tiles/{z}/{x}/{y}.png`; retain native values at detailed zoom and source attribution.
+
 ## Version History
 
 - **v1.0 (2026-10-24)**: Updated specification reflecting requirement changes:
@@ -13,7 +51,9 @@
 - **Configuration clarification (2026-10-25)**: Defined pre-event technology status from nonzero MAOS history, current-plan after status, event classification, and unavailable historical band/capacity values.
 - **UX clarification (2026-10-25)**: Site feature inspection uses a resizable docked panel on wide screens and a bottom sheet on mobile, keeping map selection and neighbor links visible.
 - **Cluster analysis clarification (2026-10-25)**: Add a cluster analysis page with cluster context, monthly aggregated MAOS KPIs, and a complete event list; event months are marked on the KPI timeline.
+- **LTE KPI analysis confirmation (2026-10-25)**: Extend cell, site, and cluster analysis with report-supported monthly LTE traffic, load, CQI, throughput, delay, and availability. Preserve aggregation denominators and missing values for reliable similarity inputs.
 - **Feature synchronization clarification (2026-10-25)**: Add Features only and Full sync actions, persisted background job status/progress, and full sync addition redetection followed by feature recomputation.
+- **Similarity inspection clarification (2026-10-25)**: Use all declared mixed similarity dimensions, show unavailable query/case values in red, and focus the map on a selected query plus its retrieved cases.
 
 - **v0 (2026-10-23)**: Initial specification draft
 
@@ -294,11 +334,9 @@ Where:
 - w_i = feature weights (from config)
 
 ### 6.2 Hierarchical Filtering
-Progressive filtering to find similar cases:
-1. **Tier 1**: Same event_type (e.g., NEW_SITE)
-2. **Tier 2**: Same dominant_clutter (e.g., urban)
-3. **Tier 3**: Similar ANP edge_score (±0.2)
-4. **Tier 4**: Geographic proximity (<20km)
+Gower numeric ranges are fitted to the candidate pool using the 5th and 95th percentiles; numeric distances are clipped to [0,1]. Missing feature values are omitted from both weighted sums, and identifiers/profile metadata are excluded.
+
+The current ranker matches event type, then technology, then a minimum 50% Jaccard overlap of added bands when dated band data is available. It relaxes the band filter, then technology, when fewer than three candidates remain, falling back to all cases when event matches are insufficient.
 
 ### 6.3 Kernel Weights
 Gaussian kernel for distance-based weighting:
@@ -310,10 +348,26 @@ Where σ = bandwidth parameter (tuned via validation)
 ### 6.4 Prediction Output
 For each target site, provide:
 - Top-K similar cases (K=10-20)
-- Predicted impact (coverage, PRB, users)
+- CBR-estimated receiver-site KPI changes for downlink traffic, RSRP, CQI, RRC users, active users, user throughput, and latency when those measurements are available.
 - Bootstrap confidence intervals (95%)
 - Local linear model coefficients
 - Feature importance for explanation
+
+### 6.5 LTE Pre-Event Similarity Profile
+- Build an as-of-date vector from persisted configuration, geometry, clutter, spatial, ANP, and cluster context plus the three latest valid pre-event LTE months.
+- Use the median of available monthly DL traffic/day, active/traffic users, weighted DL PRB, weighted CQI, DL throughput, packet delay, and availability. One available month is a valid fallback.
+- Add three-month relative trends for traffic and PRB when at least two valid months and a nonzero baseline exist.
+- Expose profile month count and metric completeness as data-quality metadata, not similarity dimensions.
+- Exclude observations at or after the event date. Omit missing metrics from Gower distance.
+- Rank retrieved cases using hierarchical filtering, Gower distance, and Gaussian kernel weights. Retrieval is separate from prediction until outcome targets and training cases are validated.
+
+### 6.6 CBR Event Impact Page
+- Select a site and estimate recipient KPI changes from similar historical site-launch cases.
+- Show the observed pre-event trend and CBR estimate from event month through six post-event months, with an event marker and bootstrap interval.
+- Allow display of an individual neighboring site, the Tier 1 cohort (within 2 km), the Tier 2 cohort (2-5 km), or all eligible sites in the selected site's DBSCAN cluster. Exclude the event site itself from recipient groups; noise sites have no cluster aggregate.
+- Use each historical recipient's median from up to three pre-event months as its baseline. The CBR response is the similarity/kernel-weighted historical mean change per recipient. Sum traffic and user-count changes across recipients; report CQI, throughput, and latency as cohort mean changes.
+- The imported MAOS report supports downlink traffic, CQI, active users, throughput, and packet delay. RSRP and average RRC users remain unavailable until a report supplies those counters. The current import is LTE-only.
+- Label predictions as observational estimates associated with similar launches; without matched untreated controls, they are not causal impact estimates. If the selected site has no detected event, use the month after the latest MAOS data as a scenario date.
 
 ---
 
@@ -346,6 +400,30 @@ Export clustering results to standard GeoJSON format:
 - Point geometries for sites
 - Properties: All cluster features
 - Compatible with GIS tools (QGIS, ArcGIS)
+
+### 7.5 LTE Monthly KPI Analysis
+- Keep cell-month values and raw aggregation components for downlink traffic, PRB use, CQI, throughput, packet delay, and cell availability.
+- Roll up ratio/average metrics using their source numerators and denominators; do not take a plain average of cell-level percentages or averages.
+- Compute DL user throughput from `(L.Thrp.bits.DL - L.Thrp.bits.DL.LastTTI) / L.Thrp.Time.DL.RmvLastTTI` per the eRAN KPI reference.
+- Keep metrics unavailable from the selected report as missing, not zero. The current LTE report does not provide equivalent 2G/3G KPI histories.
+- Use only pre-event observations for historical similarity profiles; display post-event changes descriptively and do not claim causal effect.
+
+### 7.6 Similarity Explorer
+- Search for a query site by site ID, site name, or cell name.
+- Let the user select similarity features from grouped query-site features. Disable unavailable query features and mark them red; default all available features to selected.
+- Use equal per-feature weights over the selected, query-available features until trained weights are available. Exclude selected features unavailable across the candidate pool, and omit candidate-specific missing values from that case's denominator. Report the features used for each ranked case.
+- In the feature comparison table, display each feature's normalized weight for that query-case comparison; show no weight for unselected or unavailable features.
+- Retrieve up to 20 closest detected launch/addition site cases and show event date/type, distance, similarity score, kernel weight, and profile coverage.
+- Compare the query site's pre-event LTE profile against each retrieved case.
+- Calculate mixed-type Gower distance over every declared similarity field from the configuration, terrain, clutter, spatial, ANP, pre-launch KPI, and cluster-context groups plus the report-backed pre-event LTE profile and trends. Identifiers and profile quality metadata do not contribute to distance; missing values are omitted from the pairwise denominator.
+- Expand each case to compare every similarity field side by side with the query site. Mark the row red when either value is unavailable.
+- Allow a case to open the map focused on the query site and the returned similar sites only; provide a control to restore the full map.
+- Identify the interface as case retrieval only; do not present similarity scores as predicted impact.
+
+### 7.7 CBR Event Impact Page
+- Provide site/cell-name search, event date context, metric selection, and scope selection for a neighbor site, Tier 1, Tier 2, or full cluster.
+- Plot observed monthly values and CBR-estimated values around the event month, with a vertical event marker and 95% bootstrap interval.
+- Keep unsupported KPI choices visible as unavailable with their source-data reason.
 
 ---
 

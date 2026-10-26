@@ -11,6 +11,29 @@ from .cell import Cell
 # Check if we're using spatial backend (imported from site.py through BaseModel)
 
 
+class RoadFeatures(BaseModel):
+    site = models.OneToOneField(Site, on_delete=models.CASCADE, related_name='road_features')
+    road_km_total = models.FloatField(null=True, blank=True)
+    road_km_weighted = models.FloatField(null=True, blank=True)
+    road_density_weighted_km_km2 = models.FloatField(null=True, blank=True)
+    highway_km = models.FloatField(null=True, blank=True)
+    highway_share = models.FloatField(null=True, blank=True)
+    n_road_intersections = models.IntegerField(null=True, blank=True)
+    dominant_road_class = models.CharField(max_length=30, null=True, blank=True)
+    source = models.CharField(max_length=120)
+    buffer_m = models.PositiveIntegerField()
+    osm_extract_date = models.DateField(null=True, blank=True)
+    source_hash = models.CharField(max_length=64)
+    method_version = models.CharField(max_length=80)
+    weights_version = models.CharField(max_length=64)
+    coverage_status = models.CharField(max_length=60)
+    class_lengths_km = models.JSONField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'road_features'
+
+
 class ConfigurationFeatures(BaseModel):
     """
     Configuration features (Section 3: 10 features).

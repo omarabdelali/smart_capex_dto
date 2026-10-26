@@ -5,9 +5,10 @@ Site-related Django REST Framework views.
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Avg, Count, Q, Sum
+from django.db.models import Avg, Count, F, Q, Sum
 from core.models import Cell, ClusterFeatures, MAOSMonthlyKPI, Site
 from core.serializers import SiteSerializer, SiteGeoJSONSerializer, SiteWithFeaturesSerializer
+from services.models.preprocessing.maos_aggregation import normalize_monthly_totals
 
 
 class SiteViewSet(viewsets.ReadOnlyModelViewSet):
@@ -37,6 +38,11 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
         - technology: Filter by cell technology (2G, 3G, 4G)
         """
         queryset = Site.objects.all().prefetch_related('cells')
+
+        site_ids = self.request.query_params.get('site_ids', '').strip()
+        if site_ids:
+            ids = [value.strip() for value in site_ids.split(',') if value.strip()]
+            queryset = queryset.filter(site_id__in=ids)
         
         # Filter by cluster_id
         cluster_id = self.request.query_params.get('cluster_id')
@@ -214,25 +220,39 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
         monthly_rows = MAOSMonthlyKPI.objects.filter(cell__site__cluster_id=cluster_id).values(
             'month_date'
         ).annotate(
-            downlink_bits=Sum('thrp_bits_dl'),
+            traffic_bits=Sum('thrp_bits_dl'),
+            dl_bits=Sum('thrp_bits_dl', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl_last_tti__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
+            dl_last_tti_bits=Sum('thrp_bits_dl_last_tti', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
+            dl_time_ms=Sum('thrp_time_dl_ms', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl_last_tti__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
+            prb_used=Sum('prb_dl_used_avg', filter=Q(prb_dl_used_avg__isnull=False, prb_dl_available__gt=0)),
+            prb_available=Sum('prb_dl_available', filter=Q(prb_dl_used_avg__isnull=False, prb_dl_available__gt=0)),
+            delay_time_ms=Sum('dl_packet_delay_time_ms', filter=Q(dl_packet_delay_time_ms__isnull=False, dl_packet_delay_packets__gt=0)),
+            delay_packets=Sum('dl_packet_delay_packets', filter=Q(dl_packet_delay_time_ms__isnull=False, dl_packet_delay_packets__gt=0)),
+            unavailable_s=Sum('cell_unavail_duration_s', filter=Q(cell_unavail_duration_s__isnull=False, observation_duration_s__gt=0)),
+            observation_s=Sum('observation_duration_s', filter=Q(cell_unavail_duration_s__isnull=False, observation_duration_s__gt=0)),
+            cqi_weighted_total=Sum('cqi_weighted_sum', filter=Q(cqi_weighted_sum__isnull=False, cqi_sample_count__gt=0)),
+            cqi_sample_count=Sum('cqi_sample_count', filter=Q(cqi_weighted_sum__isnull=False, cqi_sample_count__gt=0)),
             active_users=Sum('active_users_avg'),
             traffic_users=Sum('traffic_user_avg'),
-            downlink_prb=Avg('prb_util_dl_pct'),
-            cqi=Avg('cqi_avg'),
             reporting_cells=Count('cell_id', distinct=True),
+            reporting_sites=Count('cell__site_id', distinct=True),
         ).order_by('month_date')
-        monthly_kpis = [
-            {
+        monthly_kpis = []
+        for row in monthly_rows:
+            metrics = normalize_monthly_totals(row)
+            monthly_kpis.append({
                 'month': row['month_date'].isoformat(),
-                'downlink_traffic_gb': (row['downlink_bits'] or 0) / 8_000_000_000,
-                'active_users_sum': row['active_users'] or 0,
-                'traffic_users_sum': row['traffic_users'] or 0,
-                'downlink_prb_avg_pct': row['downlink_prb'] or 0,
-                'cqi_avg': row['cqi'] or 0,
+                'downlink_traffic_gb': metrics['thrp_dl_gb'],
+                'active_users_sum': metrics['active_users_avg'],
+                'traffic_users_sum': metrics['traffic_user_avg'],
+                'downlink_prb_avg_pct': metrics['prb_util_dl_pct'],
+                'cqi_avg': metrics['cqi_avg'],
+                'dl_throughput_kbps': metrics['dl_throughput_kbps'],
+                'dl_packet_delay_ms': metrics['dl_packet_delay_ms'],
+                'cell_availability_pct': metrics['cell_availability_pct'],
                 'reporting_cells': row['reporting_cells'],
-            }
-            for row in monthly_rows
-        ]
+                'reporting_sites': row['reporting_sites'],
+            })
         event_counts = {}
         for event in events:
             event_counts[event['event_type']] = event_counts.get(event['event_type'], 0) + 1

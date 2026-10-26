@@ -142,8 +142,11 @@ export default {
       { key: 'downlink_traffic_gb', label: 'Downlink traffic (GB/month)', color: '#2563eb' },
       { key: 'active_users_sum', label: 'Sum of cell average active users', color: '#7c3aed' },
       { key: 'traffic_users_sum', label: 'Sum of average traffic users', color: '#0891b2' },
-      { key: 'downlink_prb_avg_pct', label: 'Mean downlink PRB use (%)', color: '#d97706' },
-      { key: 'cqi_avg', label: 'Mean CQI', color: '#059669' }
+      { key: 'downlink_prb_avg_pct', label: 'Weighted DL PRB utilization (%)', color: '#d97706' },
+      { key: 'cqi_avg', label: 'Weighted mean CQI', color: '#059669' },
+      { key: 'dl_throughput_kbps', label: 'DL throughput (kbit/s)', color: '#db2777' },
+      { key: 'dl_packet_delay_ms', label: 'DL packet delay (ms)', color: '#ea580c' },
+      { key: 'cell_availability_pct', label: 'Cell availability (%)', color: '#0f766e' }
     ];
     const activeMetric = computed(() => metrics.find(metric => metric.key === selectedMetric.value) || metrics[0]);
 

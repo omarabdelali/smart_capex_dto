@@ -23,3 +23,6 @@ class Command(BaseCommand):
         self.stdout.write(f"Valid cell-month rows submitted: {stats['rows_submitted']:,}")
         self.stdout.write(f"Unmatched cell names: {stats['unmatched_cells']:,}")
         self.stdout.write(f"Invalid month values: {stats['invalid_dates']:,}")
+        self.stdout.write(f"Supported source counters found: {len(stats['available_counters']):,}")
+        if stats['missing_counters']:
+            self.stdout.write(f"Source counters absent from this report: {', '.join(stats['missing_counters'])}")

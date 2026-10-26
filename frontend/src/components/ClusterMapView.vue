@@ -9,6 +9,10 @@
     <!-- Map controls panel -->
     <div class="map-controls" :class="{ 'controls-open': controlsOpen }">
       <h3>Cluster Visualization</h3>
+      <div v-if="focusSites" class="focus-banner">
+        <strong>Similarity map</strong><span>{{ focusSites.siteIds.length }} sites shown</span>
+        <button type="button" @click="$emit('clear-focus')">Show all sites</button>
+      </div>
       
       <!-- Cluster statistics -->
       <div v-if="stats" class="stats-panel">
@@ -103,6 +107,19 @@
         </div>
       </div>
 
+      <div class="dem-controls">
+        <h4>Population</h4>
+        <label><input type="checkbox" v-model="populationVisible" @change="togglePopulation"> Tunisia population density</label>
+        <template v-if="populationVisible">
+          <label>Opacity: {{ populationOpacity }}%
+            <input type="range" min="0" max="100" v-model="populationOpacity" @input="populationLayer?.setOpacity(populationOpacity / 100)">
+          </label>
+          <p>People/km²: 🟨 0–100 · 🟧 100–1,000 · 🟥 1,000–10,000 · 🟪 10,000+</p>
+          <small>GHSL 2025 estimate · native 100 m cells. Zooming does not add population precision. Transparent: zero or no data.</small>
+          <p v-if="populationError" role="status">{{ populationError }}</p>
+        </template>
+      </div>
+
       <!-- Cluster selector -->
       <div class="cluster-selector" v-if="stats && stats.clusters">
         <label for="cluster-select">Filter by Cluster:</label>
@@ -171,13 +188,15 @@ import SiteFeaturePopup from './SiteFeaturePopup.vue';
 
 export default {
   name: 'ClusterMapView',
+  props: { focusSites: { type: Object, default: null } },
+  emits: ['clear-focus'],
   
   components: {
     ElevationLegend,
     SiteFeaturePopup
   },
   
-  setup() {
+  setup(props) {
     const mapContainer = ref(null);
     const map = ref(null);
     const sitesLayer = ref(null);
@@ -214,6 +233,27 @@ export default {
     
     const hillshadeLayer = ref(null);
     const elevationLayer = ref(null);
+    const populationVisible = ref(false);
+    const populationOpacity = ref(65);
+    const populationLayer = ref(null);
+    const populationError = ref('');
+    const togglePopulation = () => {
+      if (!populationVisible.value) {
+        populationLayer.value?.remove();
+        return;
+      }
+      populationError.value = '';
+      if (!populationLayer.value) {
+        populationLayer.value = L.tileLayer(`${API_BASE_URL}/population/tiles/{z}/{x}/{y}.png`, {
+          opacity: populationOpacity.value / 100,
+          maxZoom: 18, zIndex: 350,
+          bounds: [[30.0, 7.0], [37.8, 12.0]],
+          attribution: 'European Commission JRC · GHSL population 2025 (100 m)'
+        });
+        populationLayer.value.on('tileerror', () => { populationError.value = 'Population layer could not load. Please retry.'; });
+      }
+      populationLayer.value.addTo(map.value);
+    };
 
     // API base URL (configure this based on your Django backend)
     const API_BASE_URL = 'http://localhost:8000/api';
@@ -260,10 +300,12 @@ export default {
       try {
         // Build query parameters
         const params = {};
-        if (selectedCluster.value !== null && !searchQuery.value) {
+        if (props.focusSites?.siteIds?.length) {
+          params.site_ids = props.focusSites.siteIds.join(',');
+        } else if (selectedCluster.value !== null && !searchQuery.value) {
           params.cluster_id = selectedCluster.value;
         }
-        if (searchQuery.value) params.search = searchQuery.value;
+        if (!props.focusSites?.siteIds?.length && searchQuery.value) params.search = searchQuery.value;
 
         console.log('Fetching cluster data with params:', params);
 
@@ -460,13 +502,13 @@ export default {
       const geojson = await fetchClusterData();
       if (!geojson || !geojson.features || geojson.features.length === 0) {
         console.warn('No features to display');
-        if (searchQuery.value) {
+        if (searchQuery.value && !props.focusSites?.siteIds?.length) {
           searchResultCount.value = 0;
           closeSiteDetails();
         }
         return;
       }
-      if (searchQuery.value) searchResultCount.value = geojson.features.length;
+      if (searchQuery.value && !props.focusSites?.siteIds?.length) searchResultCount.value = geojson.features.length;
 
       console.log(`Total features fetched: ${geojson.features.length}`);
       console.log('Current filters:', filters.value);
@@ -480,7 +522,7 @@ export default {
       // Add GeoJSON layer
       const geoJsonLayer = L.geoJSON(geojson, {
         filter: (feature) => {
-          const shouldShow = shouldDisplaySite(feature.properties);
+          const shouldShow = props.focusSites?.siteIds?.length ? true : shouldDisplaySite(feature.properties);
           if (shouldShow) {
             filteredCount++;
             if (feature.properties.cluster_id === -1) noiseCount++;
@@ -545,7 +587,10 @@ export default {
         console.log('Zooming to bounds:', bounds);
         map.value.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
         const layers = geoJsonLayer.getLayers();
-        if (searchQuery.value && layers.length) {
+        if (props.focusSites?.querySiteId) {
+          const queryLayer = layers.find(layer => String(layer.feature?.properties?.site_id) === String(props.focusSites.querySiteId));
+          if (queryLayer) selectSite(queryLayer.feature, queryLayer, geojson.features);
+        } else if (searchQuery.value && layers.length) {
           selectSite(layers[0].feature, layers[0], geojson.features);
         } else if (selectedSiteId.value) {
           const selectedLayer = layers.find(layer => String(layer.feature?.properties?.site_id) === selectedSiteId.value);
@@ -651,6 +696,13 @@ export default {
     watch(selectedCluster, () => {
       updateMap();
     });
+    watch(() => props.focusSites, async () => {
+      selectedCluster.value = null;
+      siteSearch.value = '';
+      searchQuery.value = '';
+      await nextTick();
+      updateMap();
+    }, { deep: true });
 
     return {
       mapContainer,
@@ -669,6 +721,7 @@ export default {
       inspectorWidth,
       apiBaseUrl,
       demLayers,
+      populationVisible, populationOpacity, populationLayer, populationError, togglePopulation,
       updateMap,
       searchSites,
       clearSearch,
@@ -712,6 +765,8 @@ export default {
   margin-top: 0;
   color: #333;
 }
+.focus-banner { display: grid; gap: 5px; margin: 12px 0; padding: 11px; border: 1px solid #99f6e4; border-radius: 7px; background: #f0fdfa; color: #115e59; font-size: 12px; }
+.focus-banner button { width: max-content; margin-top: 3px; padding: 7px 9px; border: 0; border-radius: 5px; background: #0f766e; color: white; cursor: pointer; }
 
 .stats-panel {
   background: white;

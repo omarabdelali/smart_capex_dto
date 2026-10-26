@@ -8,13 +8,17 @@
     <nav class="app-navigation" aria-label="Main pages">
       <button type="button" :aria-current="activePage === 'map' ? 'page' : null" @click="activePage = 'map'">Site map</button>
       <button type="button" :aria-current="activePage === 'clusters' ? 'page' : null" @click="activePage = 'clusters'">Cluster analysis</button>
+      <button type="button" :aria-current="activePage === 'similarity' ? 'page' : null" @click="activePage = 'similarity'">Similarity</button>
+      <button type="button" :aria-current="activePage === 'prediction' ? 'page' : null" @click="activePage = 'prediction'">CBR impact</button>
       <button type="button" :aria-current="activePage === 'sync' ? 'page' : null" @click="activePage = 'sync'">Feature sync</button>
     </nav>
     
     <main class="app-main">
-      <ClusterMapView v-if="activePage === 'map'" />
+      <ClusterMapView v-if="activePage === 'map'" :focus-sites="mapFocus" @clear-focus="mapFocus = null" />
       <ClusterAnalysisView v-else-if="activePage === 'clusters'" />
-      <FeatureSyncView v-else />
+      <FeatureSyncView v-else-if="activePage === 'sync'" />
+      <CBRPredictionView v-else-if="activePage === 'prediction'" />
+      <SimilarityExplorerView v-show="activePage === 'similarity'" @show-on-map="showSimilarityOnMap" />
     </main>
   </div>
 </template>
@@ -23,17 +27,27 @@
 import { ref } from 'vue';
 import ClusterMapView from './components/ClusterMapView.vue';
 import ClusterAnalysisView from './components/ClusterAnalysisView.vue';
+import SimilarityExplorerView from './components/SimilarityExplorerView.vue';
 import FeatureSyncView from './components/FeatureSyncView.vue';
+import CBRPredictionView from './components/CBRPredictionView.vue';
 
 export default {
   name: 'App',
   components: {
     ClusterMapView,
     ClusterAnalysisView,
-    FeatureSyncView
+    SimilarityExplorerView,
+    FeatureSyncView,
+    CBRPredictionView
   },
   setup() {
-    return { activePage: ref('map') };
+    const activePage = ref('map');
+    const mapFocus = ref(null);
+    function showSimilarityOnMap(payload) {
+      mapFocus.value = payload;
+      activePage.value = 'map';
+    }
+    return { activePage, mapFocus, showSimilarityOnMap };
   },
 };
 </script>
@@ -81,6 +95,7 @@ export default {
 
 .app-navigation {
   display: flex;
+  flex-wrap: wrap;
   flex: 0 0 auto;
   gap: 6px;
   padding: 8px clamp(10px, 1.5vw, 20px);

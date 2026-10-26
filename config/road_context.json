@@ -1,0 +1,16 @@
+{
+  "source_path": "data/geographic/osm/tunisia.gpkg",
+  "source_layer": "gis_osm_roads_free",
+  "extract_date": null,
+  "download_url": "https://download.geofabrik.de/africa/tunisia-latest-free.gpkg.zip",
+  "buffer_m": 1000,
+  "coverage_radius_m": 5000,
+  "method_version": "buffer_endpoint_topology_v1",
+  "calibration_status": "prior, uncalibrated",
+  "class_weights": {
+    "motorway": 1.0, "trunk": 1.0, "primary": 0.7,
+    "secondary": 0.5, "tertiary": 0.3,
+    "residential": 0.1, "unclassified": 0.1, "unknown": 0.05
+  },
+  "road_group_weight_cap": 0.05
+}

@@ -60,21 +60,37 @@ class MAOSMonthlyKPI(BaseModel):
     month_date = models.DateField(db_index=True, help_text="First day of the month")
     
     # Traffic counters
-    traffic_user_avg = models.FloatField(default=0, help_text="L.Traffic.User.Avg")
-    thrp_bits_dl = models.FloatField(default=0, help_text="L.Thrp.bits.DL (bits)")
-    thrp_bits_ul = models.FloatField(default=0, help_text="L.Thrp.bits.UL (bits)")
+    traffic_user_avg = models.FloatField(null=True, blank=True, default=None, help_text="L.Traffic.User.Avg")
+    thrp_bits_dl = models.FloatField(null=True, blank=True, default=None, help_text="L.Thrp.bits.DL (bits)")
+    thrp_bits_ul = models.FloatField(null=True, blank=True, default=None, help_text="Unavailable in current LTE report")
     
     # PRB utilization
-    prb_util_dl_pct = models.FloatField(default=0)
-    prb_util_ul_pct = models.FloatField(default=0)
+    prb_util_dl_pct = models.FloatField(null=True, blank=True, default=None)
+    prb_util_ul_pct = models.FloatField(null=True, blank=True, default=None)
     
     # User metrics
-    rrc_conn_avg = models.FloatField(default=0, help_text="Average RRC connections")
-    active_users_avg = models.FloatField(default=0)
+    rrc_conn_avg = models.FloatField(null=True, blank=True, default=None, help_text="Unavailable as an average in current LTE report")
+    active_users_avg = models.FloatField(null=True, blank=True, default=None)
     
     # Quality metrics
-    cqi_avg = models.FloatField(default=0, help_text="Channel Quality Indicator")
-    rsrp_avg_dbm = models.FloatField(default=0, help_text="RSRP in dBm")
+    cqi_avg = models.FloatField(null=True, blank=True, default=None, help_text="Weighted mean from downlink CQI histogram")
+    rsrp_avg_dbm = models.FloatField(null=True, blank=True, default=None, help_text="Unavailable as a downlink cell-level average in current LTE report")
+
+    # Raw components retained so site and cluster summaries can aggregate
+    # ratios and weighted averages correctly instead of averaging averages.
+    prb_dl_used_avg = models.FloatField(null=True, blank=True, default=None)
+    prb_dl_available = models.FloatField(null=True, blank=True, default=None)
+    thrp_time_dl_ms = models.FloatField(null=True, blank=True, default=None)
+    thrp_bits_dl_last_tti = models.FloatField(null=True, blank=True, default=None)
+    dl_packet_delay_time_ms = models.FloatField(null=True, blank=True, default=None)
+    dl_packet_delay_packets = models.FloatField(null=True, blank=True, default=None)
+    dl_throughput_kbps = models.FloatField(null=True, blank=True, default=None)
+    dl_packet_delay_ms = models.FloatField(null=True, blank=True, default=None)
+    cell_unavail_duration_s = models.FloatField(null=True, blank=True, default=None)
+    observation_duration_s = models.FloatField(null=True, blank=True, default=None)
+    cell_availability_pct = models.FloatField(null=True, blank=True, default=None)
+    cqi_weighted_sum = models.FloatField(null=True, blank=True, default=None)
+    cqi_sample_count = models.FloatField(null=True, blank=True, default=None)
     
     created_at = models.DateTimeField(auto_now_add=True)
     

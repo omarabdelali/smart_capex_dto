@@ -42,15 +42,14 @@ export default {
     const selectedSource = ref('site');
     let chart = null;
     const metrics = [
-      { key: 'prb_util_dl_pct', label: 'Downlink PRB used' },
-      { key: 'prb_util_ul_pct', label: 'Uplink PRB used' },
-      { key: 'traffic_user_avg', label: 'Average traffic users' },
-      { key: 'active_users_avg', label: 'Average active users' },
-      { key: 'rrc_conn_avg', label: 'Average RRC connections' },
-      { key: 'cqi_avg', label: 'Average downlink CQI' },
-      { key: 'rsrp_avg_dbm', label: 'Average RSRP (dBm)' },
+      { key: 'prb_util_dl_pct', label: 'DL PRB utilization (%)' },
+      { key: 'traffic_user_avg', label: 'Sum of cell traffic users' },
+      { key: 'active_users_avg', label: 'Sum of cell active users' },
+      { key: 'cqi_avg', label: 'Weighted downlink CQI' },
+      { key: 'dl_throughput_kbps', label: 'DL user throughput (kbit/s)' },
+      { key: 'dl_packet_delay_ms', label: 'DL packet delay (ms)' },
+      { key: 'cell_availability_pct', label: 'Cell availability (%)' },
       { key: 'thrp_dl_gb', label: 'Downlink traffic (GB)' },
-      { key: 'thrp_ul_gb', label: 'Uplink traffic (GB)' }
     ];
     const activeMetric = computed(() => metrics.find(metric => metric.key === selectedMetric.value));
     const chosenCells = computed(() => selectedSource.value === 'added_cells'

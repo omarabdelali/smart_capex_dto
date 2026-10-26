@@ -3,7 +3,7 @@ Feature-related Django REST Framework serializers.
 """
 
 from rest_framework import serializers
-from django.db.models import Avg, Sum
+from django.db.models import Count, F, Q, Sum
 from core.serializers.site_serializers import get_site_addition_data
 from core.models import (
     GeometricFeatures,
@@ -15,6 +15,14 @@ from core.models import (
     ClusterFeatures,
     Site
 )
+from services.models.preprocessing.maos_aggregation import normalize_monthly_totals
+from core.models import RoadFeatures
+
+
+class RoadFeaturesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RoadFeatures
+        exclude = ('id', 'site')
 
 
 class GeometricFeaturesSerializer(serializers.ModelSerializer):
@@ -139,6 +147,8 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
     maos_cells = serializers.SerializerMethodField()
     configuration = serializers.SerializerMethodField()
     cluster_features = serializers.SerializerMethodField()
+    population = serializers.SerializerMethodField()
+    roads = RoadFeaturesSerializer(source='road_features', read_only=True)
     
     # Cell info
     cell_count = serializers.SerializerMethodField()
@@ -177,12 +187,18 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
             'maos_monthly',
             'maos_cells',
             'configuration',
-            'cluster_features'
+            'cluster_features',
+            'population',
+            'roads',
         ]
     
     def get_cell_count(self, obj):
         """Get number of cells at this site."""
         return sum(1 for _ in obj.cells.all())
+
+    def get_population(self, obj):
+        from services.models.features.population import population_features
+        return population_features(obj.latitude, obj.longitude)
     
     def get_technologies(self, obj):
         """Get list of technologies at this site."""
@@ -246,29 +262,23 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
         """Aggregate imported cell counters into a site-level monthly series."""
         from core.models import MAOSMonthlyKPI
         rows = MAOSMonthlyKPI.objects.filter(cell__site=obj).values('month_date').annotate(
-            traffic_user_avg=Avg('traffic_user_avg'),
-            active_users_avg=Avg('active_users_avg'),
-            prb_util_dl_pct=Avg('prb_util_dl_pct'),
-            prb_util_ul_pct=Avg('prb_util_ul_pct'),
-            rrc_conn_avg=Avg('rrc_conn_avg'),
-            cqi_avg=Avg('cqi_avg'),
-            rsrp_avg_dbm=Avg('rsrp_avg_dbm'),
-            thrp_bits_dl=Sum('thrp_bits_dl'),
-            thrp_bits_ul=Sum('thrp_bits_ul'),
+            traffic_users=Sum('traffic_user_avg'), active_users=Sum('active_users_avg'),
+            traffic_bits=Sum('thrp_bits_dl'),
+            dl_bits=Sum('thrp_bits_dl', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl_last_tti__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
+            dl_last_tti_bits=Sum('thrp_bits_dl_last_tti', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
+            dl_time_ms=Sum('thrp_time_dl_ms', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl_last_tti__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
+            prb_used=Sum('prb_dl_used_avg', filter=Q(prb_dl_used_avg__isnull=False, prb_dl_available__gt=0)),
+            prb_available=Sum('prb_dl_available', filter=Q(prb_dl_used_avg__isnull=False, prb_dl_available__gt=0)),
+            delay_time_ms=Sum('dl_packet_delay_time_ms', filter=Q(dl_packet_delay_time_ms__isnull=False, dl_packet_delay_packets__gt=0)),
+            delay_packets=Sum('dl_packet_delay_packets', filter=Q(dl_packet_delay_time_ms__isnull=False, dl_packet_delay_packets__gt=0)),
+            unavailable_s=Sum('cell_unavail_duration_s', filter=Q(cell_unavail_duration_s__isnull=False, observation_duration_s__gt=0)),
+            observation_s=Sum('observation_duration_s', filter=Q(cell_unavail_duration_s__isnull=False, observation_duration_s__gt=0)),
+            cqi_weighted_total=Sum('cqi_weighted_sum', filter=Q(cqi_weighted_sum__isnull=False, cqi_sample_count__gt=0)),
+            cqi_sample_count=Sum('cqi_sample_count', filter=Q(cqi_weighted_sum__isnull=False, cqi_sample_count__gt=0)),
+            reporting_cells=Count('cell_id', distinct=True),
         ).order_by('month_date')
         return [
-            {
-                'month': row['month_date'].strftime('%Y-%m'),
-                'traffic_user_avg': row['traffic_user_avg'],
-                'active_users_avg': row['active_users_avg'],
-                'prb_util_dl_pct': row['prb_util_dl_pct'],
-                'prb_util_ul_pct': row['prb_util_ul_pct'],
-                'rrc_conn_avg': row['rrc_conn_avg'],
-                'cqi_avg': row['cqi_avg'],
-                'rsrp_avg_dbm': row['rsrp_avg_dbm'],
-                'thrp_dl_gb': (row['thrp_bits_dl'] or 0) / 8_000_000_000,
-                'thrp_ul_gb': (row['thrp_bits_ul'] or 0) / 8_000_000_000,
-            }
+            {'month': row['month_date'].strftime('%Y-%m'), **normalize_monthly_totals(row)}
             for row in rows
         ]
 
@@ -279,7 +289,8 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
         rows = MAOSMonthlyKPI.objects.filter(cell__site=obj).values(
             'cell__cell_name', 'cell__technology', 'month_date', 'traffic_user_avg',
             'active_users_avg', 'prb_util_dl_pct', 'prb_util_ul_pct', 'rrc_conn_avg',
-            'cqi_avg', 'rsrp_avg_dbm', 'thrp_bits_dl', 'thrp_bits_ul',
+            'cqi_avg', 'rsrp_avg_dbm', 'thrp_bits_dl', 'thrp_bits_ul', 'dl_throughput_kbps',
+            'dl_packet_delay_ms', 'cell_availability_pct',
         ).order_by('cell__cell_name', 'month_date')
         series = {}
         for row in rows.iterator(chunk_size=2_000):
@@ -300,8 +311,11 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
                 'rrc_conn_avg': row['rrc_conn_avg'],
                 'cqi_avg': row['cqi_avg'],
                 'rsrp_avg_dbm': row['rsrp_avg_dbm'],
-                'thrp_dl_gb': (row['thrp_bits_dl'] or 0) / 8_000_000_000,
-                'thrp_ul_gb': (row['thrp_bits_ul'] or 0) / 8_000_000_000,
+                'thrp_dl_gb': row['thrp_bits_dl'] / 8_000_000_000 if row['thrp_bits_dl'] is not None else None,
+                'thrp_ul_gb': None,
+                'dl_throughput_kbps': row['dl_throughput_kbps'],
+                'dl_packet_delay_ms': row['dl_packet_delay_ms'],
+                'cell_availability_pct': row['cell_availability_pct'],
             })
         return list(series.values())
 

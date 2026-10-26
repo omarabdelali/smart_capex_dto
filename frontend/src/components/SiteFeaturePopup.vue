@@ -112,6 +112,35 @@
         </div>
         
         <!-- Geometric Tab -->
+        <div v-if="activeTab === 'roads'" class="tab-pane population-panel">
+          <h4>Road context · {{ features.roads?.buffer_m || 1000 }} m buffer</h4>
+          <template v-if="features.roads">
+            <p>{{ features.roads.source }} · © OpenStreetMap contributors · ODbL</p>
+            <div v-for="item in roadRows" :key="item.key" class="info-item">
+              <span class="label">{{ item.label }}</span>
+              <span class="value">{{ item.value == null ? 'Unavailable' : typeof item.value === 'number' ? item.value.toLocaleString(undefined, { maximumFractionDigits: 3 }) + ' ' + item.unit : item.value }}</span>
+            </div>
+            <h4>Road length by class</h4>
+            <div v-for="item in roadClasses" :key="item.name" class="road-class"><span>{{ item.name }} · {{ item.km.toFixed(2) }} km</span><div class="road-bar" :style="{ width: `${item.share}%` }"></div></div>
+            <p>{{ features.roads.coverage_status === 'nearby_osm_evidence' ? 'OSM roads exist within 5 km. This is a coverage heuristic, not proof of complete mapping.' : 'No source roads within 5 km: measurements remain unavailable.' }}</p>
+            <p>Extract date: {{ features.roads.osm_extract_date || 'Unknown' }}. Junctions are estimated from geometry and separated by layer/bridge/tunnel; original OSM node IDs are unavailable.</p>
+            <small>Class weights are prior, uncalibrated. Current snapshot only; roads are optional in similarity and excluded from historical CBR unless source timing is known.</small>
+          </template>
+          <p v-else>Road features have not been synchronized for this site.</p>
+        </div>
+        <div v-if="activeTab === 'population'" class="tab-pane population-panel">
+          <h4>Population context</h4>
+          <p>GHSL 2025 · native 100 m population estimates</p>
+          <div v-for="item in populationRows" :key="item.key" class="info-item">
+            <span class="label">{{ item.label }}</span>
+            <span class="value">{{ item.value == null ? 'Unavailable' : Number(item.value).toLocaleString(undefined, { maximumFractionDigits: item.unit === 'people' ? 0 : 1 }) + ' ' + item.unit }}</span>
+            <small v-if="item.quality?.land_coverage != null">Land coverage {{ (100 * item.quality.land_coverage).toFixed(1) }}% · water {{ item.quality.water_pct.toFixed(1) }}%</small>
+            <small v-if="item.quality?.status === 'incomplete_land_coverage'">Partial mapped estimate: missing land is excluded, so the full catchment population may be higher.</small>
+            <small v-if="item.value == null">{{ item.quality?.status === 'outside_raster' ? 'Outside population raster coverage.' : 'Insufficient population data on land; no missing residents have been invented.' }}</small>
+          </div>
+          <p>Counts are calculated from covered population cells. Tier 2 excludes Tier 1. Water is identified using WorldCover; missing land is not filled. Density is mapped population divided by the full catchment area.</p>
+          <small>Current 2025 context; historical similarity excludes this population source before 2025.</small>
+        </div>
         <div v-if="activeTab === 'geometric'" class="tab-pane">
           <div v-if="features.geometric" class="feature-section">
             <div class="info-grid">
@@ -293,10 +322,28 @@ export default {
       { id: 'geometric', label: 'Terrain' },
       { id: 'clutter', label: 'Clutter' },
       { id: 'spatial', label: 'Spatial' },
+      { id: 'population', label: 'Population' },
+      { id: 'roads', label: 'Roads' },
       { id: 'network', label: 'KPIs & Config' },
       { id: 'anp', label: 'ANP' }
     ];
     
+    const roadRows = computed(() => [
+      ['road_km_total', 'Total road length', 'km'], ['road_km_weighted', 'Weighted road length', 'km'],
+      ['road_density_weighted_km_km2', 'Weighted road density', 'km/km²'], ['highway_km', 'Motorway + trunk length', 'km'],
+      ['highway_share', 'Motorway + trunk share', '(0–1)'], ['n_road_intersections', 'Estimated road junctions', ''],
+      ['dominant_road_class', 'Dominant road class', ''],
+    ].map(([key,label,unit]) => ({ key,label,unit,value: features.value?.roads?.[key] })));
+    const roadClasses = computed(() => {
+      const values = Object.entries(features.value?.roads?.class_lengths_km || {});
+      const max = Math.max(0.001, ...values.map(([,km]) => km));
+      return values.sort((a,b) => b[1]-a[1]).map(([name,km]) => ({ name,km,share: 100*km/max }));
+    });
+    const populationRows = computed(() => [
+      { key: 'population_density_1km_per_km2', label: 'Density within 1 km', unit: 'people/km²', quality: features.value?.population?.quality?.density_1km },
+      { key: 'population_tier1', label: 'Tier 1 population (0–2 km)', unit: 'people', quality: features.value?.population?.quality?.tier1 },
+      { key: 'population_tier2', label: 'Tier 2 population (2–5 km)', unit: 'people', quality: features.value?.population?.quality?.tier2 },
+    ].map(item => ({ ...item, value: features.value?.population?.[item.key] })));
     // Computed properties for site info
     const clusterLabel = computed(() => {
       if (!features.value) return '';
@@ -393,6 +440,8 @@ export default {
       error,
       activeTab,
       tabs,
+      populationRows,
+      roadRows, roadClasses,
       clusterLabel,
       clusterBadgeClass,
       positionLabel,
@@ -410,6 +459,11 @@ export default {
 </script>
 
 <style scoped>
+.road-bar { height: 6px; background: #6366f1; border-radius: 3px; margin-top: 4px; }
+.road-class { font-size: 12px; color: #475569; }
+.population-panel { display: grid; gap: 12px; }
+.population-panel .info-item { display: grid; gap: 5px; padding: 10px; background: #f8fafc; border-radius: 7px; }
+.population-panel small, .population-panel p { color: #64748b; font-size: 12px; line-height: 1.5; }
 .site-feature-popup {
   width: 100%;
   min-width: 0;

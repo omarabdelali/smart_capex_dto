@@ -1,5 +1,42 @@
 # Smart CAPEX Specification Changelog v1.0
 
+## Feature engineering reference consolidation (2026-10-26)
+
+- Replaced overlapping amendments in `feature_eng.md` with one current 80-dimension catalog covering formulas, sources, storage, actual consumers, missing-data rules, weighting and historical eligibility.
+- Reconciled population partial-coverage behavior, verified road provenance, CBR cohort calculations and remaining audit findings; separated implemented checks from proposed enhancements and blocked ablation.
+- Documentation-only update; implementation checks are recorded as previously executed, not newly rerun.
+
+## Persisted road context (2026-10-26)
+
+- Added local Geofabrik road ingestion, indexed UTM GeoPackage and hash/licence/source manifest; configured uncalibrated class priors.
+- Added nullable `RoadFeatures` and additive migration 0007 (shown before application); backfilled 3,441 sites: 3,440 computed, one NULL, zero errors.
+- Registered roads in feature sync; added a separate Roads popup tab, class-length visualization and optional similarity fields.
+- Added explicit road opt-in, provenance matching, a 5% road-group cap, selectable per-feature/group weighting and actual comparison weights. Preserved legacy non-road defaults.
+- Verified source timestamp 2026-10-22T20:21:33Z from archive README with matching GeoPackage hash and attested all 3,441 stored rows.
+- Ran redundancy diagnostics; weighted length/density are collinear. Historical ablation is blocked by missing earlier snapshots; roads remain default-off.
+
+## BIZ_0033 population and CBR corrections (2026-10-26)
+
+- Moved population from Overview to its own site-inspector tab, with density, T1/T2 counts and coverage.
+- Retain calculated mapped population under partial land coverage; independently identify water with WorldCover. Never invent missing residents. Source-supported BIZ_0033 totals are about 27,090 (T1) and 56,589 (T2), explicitly labeled partial.
+- Align CBR baseline/observed/predicted cohort aggregation, suppress incomplete observed totals, enforce physical bounds, retain chart gaps and show monthly analog/cohort support.
+- Added six numerical regression checks and a live BIZ_0033 popup/chart verification script; nineteen automated tests pass.
+
+## Tier population and historical feature timing (2026-10-26)
+
+- Added native GHSL counts for Tier 1 (0–2 km disk) and Tier 2 (2–5 km ring) to similarity and CBR ranking, feature picker/comparison, site inspector and CBR page; retain 1 km density.
+- Use three complete pre-event calendar months; reconstruct LTE neighbor/ANP/cluster context from activity evidence, and mark unsupported historical configuration/building/legacy KPI values missing.
+- Exclude 2025 population before 2025; preserve the source epoch label and coverage requirements.
+- Limit CBR analogs and each outcome horizon to launches/completed months before the query event month. Keep later query observations display-only; insufficient prior analogs produce no estimate.
+- Preserve existing deselected-feature behavior. See `feature_eng.md` for formulas, source assumptions and 13 regression checks.
+
+## Population context (2026-10-26)
+
+- Added optional Tunisia population-density map layer with opacity and legend, using GHSL 2025 native 100 m cells and detailed zoom, as selected by the user.
+- Added `population_density_1km_per_km2` to similarity and CBR ranking: fractional cell-overlap counts divided by valid area in a 1 km catchment, requiring 90% coverage.
+- Preserved existing deselected-feature behavior until production per user instruction; no dimensions removed.
+- Historical cases use fixed 2025 population context. Detailed zoom does not add population precision.
+
 ## Document Purpose
 This changelog tracks all requirement and specification changes from v0 (initial draft) to v1.0 (first implementation release).
 
@@ -41,6 +78,19 @@ This changelog tracks all requirement and specification changes from v0 (initial
 - Add a cluster analysis page showing cluster context and monthly aggregated MAOS KPIs.
 - Mark months containing detected launch/addition events with vertical lines and expose the complete cell-event list for the selected cluster.
 - Preserve noise-site semantics by excluding `cluster_id=-1` from cluster selection.
+
+## Similarity Feature Inspection (2026-10-25)
+
+- Include all declared mixed-type Gower features plus the report-backed LTE pre-event profile and trends in the similarity vector.
+- Show every vector field beside each case; mark comparisons red when either side is unavailable.
+- Let a case focus the map on the query site and retrieved similar sites, with a control to return to all sites.
+- Add a grouped feature picker that disables unavailable query features, uses equal weights across selected features until trained weights are available, and reports the dimensions used per case.
+
+## CBR Event Impact Page (2026-10-25)
+
+- Retrieve similar historical site launches and predict recipient KPI changes for individual Tier 1/Tier 2 neighbors or the full cluster.
+- Plot observed and CBR-estimated monthly KPI trends around the event with a bootstrap interval.
+- Keep RSRP and RRC users unavailable because the current LTE report does not supply those measurements; mark the estimate observational rather than causal.
 
 ### New Model Fields
 Added three new fields to Site model for clustering support:
@@ -307,6 +357,19 @@ python manage.py migrate core
 - Added persisted job state, stage, site-level progress, start/finish timestamps, and extraction results.
 - Full sync reruns MAOS addition detection before recomputing persisted features; only one active sync job is accepted at a time.
 - Added the optional feature pipeline progress callback used by the background job.
+
+## LTE KPI Analysis Update (2026-10-25)
+
+- Confirmed the CSV header against the 132 report-selected XML counters and the two Excel reference workbooks.
+- Added nullable cell-month fields for LTE throughput, PRB components, CQI support counts, packet delay, and availability inputs/results.
+- Updated the monthly importer to derive these values, preserve aggregation components, and report missing source counters.
+- Specified weighted site/cluster rollups and missing-is-not-zero behavior for the next increment.
+- Reimported 890,674 linked monthly cell records; 26 report counters were present, with 2,550 unmatched source rows retained as unresolved.
+- Applied the eRAN throughput formula with LastTTI correction and added weighted site/cluster analysis chart measures.
+- Added an as-of-date similarity vector with a one-to-three-month LTE pre-event profile, trends, and completeness metadata.
+- Connected profile vectors to a reusable ranker using hierarchical filtering, robust-range Gower distance, and kernel weights; missing metrics are omitted from distance calculations.
+- Added `/api/similarity/search/` and a frontend similarity page with site/cell search, top-case ranking, event context, profile coverage, and side-by-side LTE profile values.
+- The page labels the results as retrieval only; impact prediction remains pending outcome-target definition.
 
 ## References
 

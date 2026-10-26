@@ -3,6 +3,12 @@ Django admin configuration for Smart CAPEX models.
 """
 
 from django.contrib import admin
+from .models import RoadFeatures
+
+@admin.register(RoadFeatures)
+class RoadFeaturesAdmin(admin.ModelAdmin):
+    list_display = ['site', 'road_km_total', 'dominant_road_class', 'coverage_status', 'buffer_m']
+    list_filter = ['coverage_status', 'dominant_road_class']
 from .models import (
     Site, Cell, ConfigurationFeatures, GeometricFeatures,
     ClutterFeatures, SpatialFeatures, ANPFeatures,
