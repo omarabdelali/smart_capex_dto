@@ -18,8 +18,8 @@ def month_offset(value, offset):
     return date(year, month+1, 1)
 
 
-def event_feature_values(site, cutoff):
-    """Recover event labels and technology evidence without current config values."""
+def event_labels(site, cutoff):
+    """Frozen detector labels used for prefiltering before expensive feature extraction."""
     order = ('SITE_ADDED','TECHNOLOGY_ADDED','FREQUENCY_BAND_ADDED','CELL_ADDED',
              'BANDWIDTH_UPGRADE','BANDWIDTH_DOWNGRADE')
     events = [e for e in site.network_events.all() if e.is_current and e.effective_date == cutoff]
@@ -32,6 +32,17 @@ def event_feature_values(site, cutoff):
     values = {'event_type':kind,
         'tech_added':'/'.join(sorted(technologies)) if kind=='TECHNOLOGY_ADDED' else None,
         'bands_added':bands if kind in ('TECHNOLOGY_ADDED','FREQUENCY_BAND_ADDED','SITE_ADDED') else None}
+    return values
+
+
+def event_feature_values(site, cutoff):
+    """Recover event labels and technology evidence without current config values."""
+    values = event_labels(site, cutoff)
+    if not values:
+        return {}
+    kind = values['event_type']
+    relevant = [e for e in site.network_events.all() if e.is_current and e.effective_date == cutoff and e.event_type == kind]
+    technologies = {tech for e in relevant for tech in e.details.get('technologies', [])}
     evidence = {row['cell__technology']:row for row in MAOSMonthlyKPI.objects.filter(
         cell__site=site,month_date__lt=cutoff,thrp_bits_dl__gte=0,
     ).values('cell__technology').annotate(observed=Count('pk'),positive=Count('pk',filter=Q(thrp_bits_dl__gt=0)))}

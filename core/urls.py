@@ -10,6 +10,7 @@ from core.views import population_views
 from core.views.feature_sync_views import FeatureSyncView
 from core.views.similarity_views import SimilarityFeatureAvailabilityView, SimilaritySearchView
 from core.views.cbr_views import CBRImpactPredictionView
+from core.views.data_explorer_views import DataExplorerView, DataExplorerMetadataView
 
 # Create router for REST API
 router = DefaultRouter()
@@ -17,6 +18,8 @@ router.register(r'sites', SiteViewSet, basename='site')
 router.register(r'cells', CellViewSet, basename='cell')
 
 urlpatterns = [
+    path('api/explore/', DataExplorerView.as_view(), name='data-explorer'),
+    path('api/explore/metadata/', DataExplorerMetadataView.as_view(), name='data-explorer-metadata'),
     path('api/population/tiles/<int:z>/<int:x>/<int:y>.png', population_views.tile, name='population-tile'),
     path('api/', include(router.urls)),
     path('api/features/sync/', FeatureSyncView.as_view(), name='feature-sync'),

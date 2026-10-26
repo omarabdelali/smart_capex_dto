@@ -1,0 +1,86 @@
+"""Live Edge checks for PCA retrieval and raw/calculated/profile exploration."""
+import json
+import re
+from pathlib import Path
+from playwright.sync_api import sync_playwright, expect
+
+
+def verify():
+    output = Path('docs/verification/similarity_pca')
+    output.mkdir(parents=True, exist_ok=True)
+    errors, checks = [], []
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(channel='msedge', headless=True)
+        page = browser.new_page(viewport={'width': 1440, 'height': 1050}, accept_downloads=True)
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        page.goto('http://127.0.0.1:3000/', wait_until='domcontentloaded')
+        page.get_by_role('button', name='Data Explorer', exact=True).click()
+        expect(page.get_by_role('button', name='Apply filters', exact=True)).to_be_enabled(timeout=60000)
+        page.get_by_label('Exact site ID', exact=True).fill('6306')
+        page.get_by_label('From month', exact=True).fill('2023-11')
+        page.get_by_label('To month', exact=True).fill('2023-11')
+        page.get_by_label('Rows per page', exact=True).select_option('25')
+        page.get_by_role('button', name='Apply filters', exact=True).click()
+        expect(page.get_by_role('button', name='Apply filters', exact=True)).to_be_enabled(timeout=120000)
+        expect(page.locator('.explorer-page > .error')).to_have_count(0)
+        expect(page.locator('.results')).to_contain_text('16 matching rows', timeout=60000)
+        expect(page.locator('.results tbody tr')).to_have_count(16)
+        with page.expect_download() as pending:
+            page.get_by_role('button', name='Export displayed page (CSV)', exact=True).click()
+        pending.value.save_as(str(output / 'raw-example.csv'))
+        page.screenshot(path=str(output / 'explorer-raw.png'))
+        checks.append('Raw month/site filters and displayed-page CSV export')
+        page.get_by_label('Dataset', exact=True).select_option('calculated')
+        page.get_by_label('Exact site ID', exact=True).fill('')
+        page.get_by_label('Cluster', exact=True).select_option('81')
+        page.get_by_label('Aggregation', exact=True).select_option('cluster')
+        page.get_by_role('button', name='Apply filters', exact=True).click()
+        expect(page.get_by_role('button', name='Apply filters', exact=True)).to_be_enabled(timeout=120000)
+        expect(page.locator('.explorer-page > .error')).to_have_count(0)
+        expect(page.locator('.results')).to_contain_text('1 matching rows', timeout=60000)
+        expect(page.locator('.results tbody')).to_contain_text(re.compile(r'75[.,]4926'))
+        page.screenshot(path=str(output / 'explorer-cluster-kpis.png'))
+        checks.append('Cluster prior-month users equal independently reconciled 75.4926')
+        page.get_by_label('Dataset', exact=True).select_option('features')
+        page.get_by_label('Exact site ID', exact=True).fill('6306')
+        page.get_by_label('Filter by value', exact=True).select_option('total_bw_after_mhz')
+        page.get_by_label('Condition', exact=True).select_option('missing')
+        page.get_by_role('button', name='Apply filters', exact=True).click()
+        expect(page.get_by_role('button', name='Apply filters', exact=True)).to_be_enabled(timeout=120000)
+        expect(page.locator('.explorer-page > .error')).to_have_count(0)
+        expect(page.locator('.results')).to_contain_text('1 matching rows', timeout=60000)
+        expect(page.locator('.results tbody')).to_contain_text('NULL')
+        expect(page.locator('.results tbody')).to_contain_text('2023-12-01')
+        checks.append('Event-safe feature profile and missing-bandwidth filter')
+        page.set_viewport_size({'width': 390, 'height': 844})
+        assert page.locator('.explorer-page').evaluate('el => el.scrollWidth <= el.clientWidth + 1')
+        page.screenshot(path=str(output / 'explorer-mobile.png'))
+        page.set_viewport_size({'width': 1440, 'height': 1050})
+        page.get_by_role('button', name='Similarity', exact=True).click()
+        page.locator('#site-search').fill('TAT_0055')
+        page.get_by_role('option').filter(has=page.locator('span', has_text=re.compile('^6306$'))).click()
+        expect(page.locator('[data-feature-key]')).to_have_count(94, timeout=60000)
+        page.locator('#representation').select_option('pca')
+        print('Waiting for candidate PCA preparation...', flush=True)
+        expect(page.locator('[data-feature-key="PC1"]')).to_be_visible(timeout=900000)
+        expect(page.locator('.pca-report')).to_contain_text('variance retained')
+        expect(page.locator('.pca-report')).to_contain_text('No missing values filled')
+        page.screenshot(path=str(output / 'pca-picker.png'))
+        page.get_by_role('button', name='Find similar sites', exact=True).click()
+        expect(page.locator('.case-card')).to_have_count(10, timeout=120000)
+        page.locator('.case-card').first.locator('.feature-details summary').click()
+        expect(page.locator('.case-card').first.locator('.feature-table-wrap')).to_contain_text('PC1')
+        page.screenshot(path=str(output / 'pca-comparison.png'))
+        checks.append('PCA picker, explained variance, component loadings and real ranked comparison')
+        page.locator('#representation').select_option('original')
+        expect(page.locator('[data-feature-key]')).to_have_count(94, timeout=60000)
+        checks.append('All 94 original fields preserved when switching back')
+        assert not errors, errors
+        browser.close()
+    report = {'checks': checks, 'page_errors': errors}
+    (output / 'browser-report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == '__main__':
+    verify()

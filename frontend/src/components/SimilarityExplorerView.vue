@@ -20,18 +20,37 @@
           <strong>{{ site.site_name }}</strong><span>{{ site.site_id }}</span>
         </button>
       </div>
-      <p v-if="selectedSite" class="selected-site">Selected: <strong>{{ selectedSite.site_name }}</strong> Â· {{ selectedSite.site_id }}</p>
+      <p v-if="selectedSite" class="selected-site">Selected: <strong>{{ selectedSite.site_name }}</strong> · {{ selectedSite.site_id }}</p>
       <section v-if="selectedSite" class="feature-picker" aria-label="Select similarity features">
+        <label for="representation">Feature representation
+          <select id="representation" v-model="representation" :disabled="loading">
+            <option value="original">Original features</option><option value="pca">PCA components + categorical features</option>
+          </select>
+        </label>
+        <section v-if="pcaReport" class="pca-report" aria-label="PCA explanation">
+          <p v-if="pcaReport.available"><strong>{{ pcaReport.input_dimension }} numeric inputs → {{ pcaReport.retained_dimension }} components</strong> · {{ percent(pcaReport.retained_variance) }} variance retained.</p>
+          <p v-else class="error-message">{{ pcaReport.reason }}</p>
+          <p>{{ pcaReport.fit_rows }} complete candidates / {{ pcaReport.candidate_pool_size }} filtered candidates; {{ pcaReport.excluded_candidate_count }} excluded. No missing values filled. Query values do not fit PCA.</p>
+          <p>Components combine standardized numeric inputs. Categorical features and optional roads remain separate. PCA changes retrieval only; CBR predictions use the existing calculation.</p>
+          <details><summary>Input exclusions and component loadings</summary>
+            <ul><li v-for="(reason, key) in pcaReport.excluded_features" :key="key">{{ key }}: {{ reason.replaceAll('_', ' ') }}</li></ul>
+            <details v-for="component in pcaReport.components" :key="component.key"><summary>{{ component.key }} · {{ percent(component.explained_variance_ratio) }} variance</summary>
+              <table><thead><tr><th>Standardized input</th><th>Loading</th></tr></thead><tbody><tr v-for="(weight, key) in component.loadings" :key="key"><td>{{ key }}</td><td>{{ weight.toFixed(4) }}</td></tr></tbody></table>
+            </details>
+          </details>
+        </section>
         <label>Weighting mode <select v-model="weightingMode"><option value="equal_per_feature">Equal per feature (current default)</option><option value="equal_per_group">Equal per group</option></select></label>
+        <p v-if="representation === 'original' && weightingMode === 'equal_per_feature'" class="scope-note">Legacy mode: deselected non-road features can retain a small fallback weight until production. The comparison table shows every actual weight. Equal per group and PCA use only selected dimensions.</p>
         <p class="scope-note">Roads are optional and uncalibrated, capped at 5% of distance weight. Select a non-road feature too. Road values describe the current snapshot, not verified event-time conditions.</p>
         <div class="picker-heading"><div><strong>Features used for similarity</strong><p>Select available query features. Missing candidate values are skipped for that case.</p></div>
           <span>{{ selectedFeatures.length }} selected</span></div>
         <p v-if="availabilityAsOf" class="feature-profile-date">KPI event cutoff: <strong>{{ availabilityAsOf }}</strong>. Performance excludes the event month; configuration PRBs may use it.</p>
         <p class="scope-note">Geography, land-cover estimates and population use the approved static-context assumption. Cluster KPIs use the previous calendar month. Antenna height defaults to 25 m when a positive plan value is unavailable. Capacity is measured in PRBs.</p>
-        <p v-if="availabilityLoading" class="picker-status" role="status">Checking feature availabilityâ€¦</p>
+        <p v-if="availabilityLoading" class="picker-status" role="status">Checking feature availability...</p>
         <p v-else-if="featureError" class="error-message" role="alert">{{ featureError }}</p>
         <template v-else-if="featureOptions.length">
           <div class="picker-actions"><button type="button" @click="selectAllAvailable">Select available</button><button type="button" @click="clearFeatureSelection">Clear</button></div>
+          <label class="feature-filter">Filter this list <input v-model="featureFilter" type="search" placeholder="Search a feature or component" /></label>
           <div class="feature-groups">
             <fieldset v-for="group in featureGroups" :key="group.key">
               <legend>{{ group.label }}</legend>
@@ -55,7 +74,7 @@
     <p class="scope-note">The available MAOS history is LTE-only. Similarity scores rank historical cases; they are not predicted KPI impacts. Population uses native 100 m GHSL 2025 estimates, treated as stable across event years by the approved assumption. Tier 1 is 0–2 km; Tier 2 is the separate 2–5 km ring.</p>
     <p v-if="results?.query.feature_timing_note" class="scope-note">{{ results.query.feature_timing_note }}</p>
     <p v-if="results" class="scope-note">Population features are mapped counts, without extrapolating missing land. Query land coverage: T1 {{ results.query.population_quality?.tier1?.land_coverage == null ? 'Unavailable' : (100 * results.query.population_quality.tier1.land_coverage).toFixed(1) + '%' }}, T2 {{ results.query.population_quality?.tier2?.land_coverage == null ? 'Unavailable' : (100 * results.query.population_quality.tier2.land_coverage).toFixed(1) + '%' }}. Partial estimates may understate full catchment population.</p>
-    <p v-if="loading" class="state-message" role="status">Building pre-event profiles and ranking casesâ€¦</p>
+    <p v-if="loading" class="state-message" role="status">Building pre-event profiles and ranking cases...</p>
     <p v-else-if="error" class="state-message error-message" role="alert">{{ error }}</p>
 
     <template v-else-if="results">
@@ -63,7 +82,7 @@
         <div>
           <p class="eyebrow">QUERY SITE</p>
           <h3>{{ results.query.site_name }}</h3>
-          <p>{{ results.query.site_id }}<span v-if="results.query.event_date"> Â· Event {{ results.query.event_date }}</span><span v-else> Â· Current site profile as of {{ results.query.as_of_date }}</span></p>
+          <p>{{ results.query.site_id }}<span v-if="results.query.event_date"> · Event {{ results.query.event_date }}</span><span v-else> · Current site profile as of {{ results.query.as_of_date }}</span></p>
         </div>
         <div class="coverage"><strong>{{ results.query.profile_months_available }} / 3</strong><span>pre-event months</span><strong>{{ percent(results.query.profile_completeness) }}</strong><span>profile coverage</span></div>
       </section>
@@ -71,7 +90,7 @@
       <div class="ranking-summary">
         <strong>{{ results.candidate_pool_size.toLocaleString() }}</strong> cases scored from {{ results.total_detected_event_sites.toLocaleString() }} detected event sites
         <span>{{ results.filter_explanation }}</span>
-        <span>{{ results.active_features.length }} selected dimensions · {{ results.weighting_method === 'equal_per_group' ? 'group-balanced weights' : 'per-feature weights with existing non-road defaults' }} · road weight capped at 5%.</span>
+        <span>{{ results.active_features.length }} selected dimensions · {{ results.weighting_method === 'equal_per_group' ? 'group-balanced weights' : results.representation === 'pca' ? 'equal selected-dimension weights' : 'per-feature weights with existing non-road defaults' }} · road weight capped at 5%.</span>
         <span v-if="Object.keys(results.excluded_features).some(key => results.excluded_features[key] === 'unavailable_for_all_candidates')">Some selected features were unavailable across the candidate pool and were excluded.</span>
       </div>
       <p v-if="!results.active_features.length" class="state-message">None of the selected features are available across the filtered candidate pool. Choose different features and rerun the search.</p>
@@ -81,7 +100,7 @@
         <article v-for="(item, index) in results.cases" :key="item.site_id" class="case-card">
           <div class="case-heading">
             <div class="rank">{{ index + 1 }}</div>
-            <div class="case-title"><h3>{{ item.site_name }}</h3><p>{{ item.site_id }} Â· {{ item.event_date || 'Event date unavailable' }} Â· {{ eventLabel(item.event_type) }}<span v-if="item.technology"> Â· {{ item.technology }}</span></p></div>
+            <div class="case-title"><h3>{{ item.site_name }}</h3><p>{{ item.site_id }} · {{ item.event_date || 'Event date unavailable' }} · {{ eventLabel(item.event_type) }}<span v-if="item.technology"> · {{ item.technology }}</span></p></div>
             <div class="score"><strong>{{ percent(item.similarity) }}</strong><span>similarity</span></div>
           </div>
           <div class="case-meta">
@@ -94,10 +113,10 @@
           </div>
           <button type="button" class="map-button" @click="showOnMap">Show query and similar sites on map</button>
           <details class="feature-details">
-            <summary>All specification similarity features ({{ featureRows.length }})</summary>
+            <summary>{{ results.representation === 'pca' ? 'Selected PCA dimensions and categorical context' : 'All specification similarity features' }} ({{ featureRows.length }})</summary>
             <div class="feature-table-wrap"><table><thead><tr><th>Feature</th><th>Query site</th><th>Similar site</th><th>Weight</th><th>Score</th></tr></thead>
-              <tbody><tr v-for="feature in featureRows" :key="feature.key" :class="{ unavailable: isUnavailable(results.query.similarity_features[feature.key]) || isUnavailable(item.similarity_features[feature.key]) }">
-                <th scope="row">{{ feature.label }}</th><td>{{ displayFeature(results.query.similarity_features[feature.key]) }}<small class="feature-reason">{{ results.query.feature_statuses?.[feature.key]?.reason }}</small></td><td>{{ displayFeature(item.similarity_features[feature.key]) }}<small class="feature-reason">{{ item.feature_statuses?.[feature.key]?.reason }}</small></td><td>{{ featureWeight(feature.key, item) }}</td><td>{{ featureStatus(feature.key, item) }}</td>
+              <tbody><tr v-for="feature in featureRows" :key="feature.key" :class="{ unavailable: isUnavailable(queryDimension(feature.key)) || isUnavailable(caseDimension(item, feature.key)) }">
+                <th scope="row">{{ feature.label }}</th><td>{{ displayFeature(queryDimension(feature.key)) }}<small class="feature-reason">{{ results.query.feature_statuses?.[feature.key]?.reason }}</small></td><td>{{ displayFeature(caseDimension(item, feature.key)) }}<small class="feature-reason">{{ item.feature_statuses?.[feature.key]?.reason }}</small></td><td>{{ featureWeight(feature.key, item) }}</td><td>{{ featureStatus(feature.key, item) }}</td>
               </tr></tbody></table></div>
           </details>
           <div class="metric-grid">
@@ -133,6 +152,11 @@ export default {
     const featureOptions = ref([]);
     const selectedFeatures = ref([]);
     const weightingMode = ref('equal_per_feature');
+    const representation = ref('original');
+    const pcaReport = ref(null);
+    const featureFilter = ref('');
+    let rankingRequest = 0;
+    const selectionByMode = new Map();
     const featureError = ref('');
     const error = ref('');
     const searchError = ref('');
@@ -148,11 +172,11 @@ export default {
       { key: 'pre_cell_availability_pct', label: 'Cell availability', unit: '%' },
     ];
       const populationLabels = { population_density_1km_per_km2: 'Population density (1 km) · people/km²', population_tier1: 'Tier 1 population (0–2 km) · people', population_tier2: 'Tier 2 population (2–5 km) · people' };
-      const featureRows = computed(() => Object.keys(results.value?.query?.similarity_features || {}).map(key => ({ key, label: populationLabels[key] || featureOptions.value.find(f => f.key === key)?.label || key.replaceAll('_', ' ') })));
+      const featureRows = computed(() => (results.value?.representation === 'pca' ? results.value.selected_features : Object.keys(results.value?.query?.similarity_features || {})).map(key => ({ key, label: populationLabels[key] || featureOptions.value.find(f => f.key === key)?.label || key.replaceAll('_', ' ') })));
     const featureGroups = computed(() => {
-      const labels = { configuration: 'Configuration', prelaunch: 'Site pre-event profile and unsupported source fields', cluster_prelaunch: 'Cluster KPIs - month before event', spatial: 'Spatial context', anp: 'Angular Neighborhood Profile', cluster: 'Cluster context', clutter: 'Terrain and clutter', population: 'Population · GHSL 2025 · 100 m', user_context: 'Pre-event edge and low-latency users', road_context: 'Road context · optional current snapshot', other: 'Other' };
+      const labels = { pca: 'Principal components - standardized numeric inputs', configuration: 'Configuration', prelaunch: 'Site pre-event profile and unsupported source fields', cluster_prelaunch: 'Cluster KPIs - month before event', spatial: 'Spatial context', anp: 'Angular Neighborhood Profile', cluster: 'Cluster context', clutter: 'Terrain and clutter', population: 'Population · GHSL 2025 · 100 m', user_context: 'Pre-event edge and low-latency users', road_context: 'Road context · optional current snapshot', other: 'Other' };
       const groups = new Map();
-      for (const feature of featureOptions.value) {
+      for (const feature of featureOptions.value.filter(f => !featureFilter.value || `${f.key} ${f.label}`.toLowerCase().includes(featureFilter.value.toLowerCase()))) {
         const group = feature.key.startsWith('cluster_pre_') || ['avg_users', 'avg_traffic_dl_gb', 'avg_prb_util_pct', 'avg_cqi'].includes(feature.key) ? 'cluster_prelaunch' : feature.group;
         if (!groups.has(group)) groups.set(group, { key: group, label: labels[group] || group, features: [] });
         groups.get(group).features.push(feature);
@@ -160,14 +184,24 @@ export default {
       return [...groups.values()];
     });
     const resultsStale = computed(() => results.value && (
-      [...selectedFeatures.value].sort().join('|') !== [...results.value.selected_features].sort().join('|') || weightingMode.value !== results.value.weighting_method
+      [...selectedFeatures.value].sort().join('|') !== [...results.value.selected_features].sort().join('|') || weightingMode.value !== results.value.weighting_method || representation.value !== results.value.representation
     ));
 
+    watch(representation, (_mode, previous) => {
+      selectionByMode.set(previous, [...selectedFeatures.value]);
+      pcaReport.value = null;
+      featureFilter.value = '';
+      if (selectedSite.value) void loadFeatureAvailability(selectedSite.value);
+    });
     watch(searchText, value => {
       if (selectedLabel && value === selectedLabel) {
         selectedLabel = '';
         return;
       }
+      rankingRequest += 1;
+      loading.value = false;
+      selectionByMode.clear();
+      pcaReport.value = null;
       selectedSite.value = null;
       results.value = null;
       featureOptions.value = [];
@@ -192,6 +226,9 @@ export default {
     });
 
     function selectSite(site) {
+      selectionByMode.clear();
+      pcaReport.value = null;
+      rankingRequest += 1;
       selectedSite.value = site;
       availabilityAsOf.value = null;
       selectedLabel = `${site.site_name} (${site.site_id})`;
@@ -209,11 +246,13 @@ export default {
       availabilityLoading.value = true;
       featureError.value = '';
       try {
-        const response = await axios.get(`${API}/similarity/features/`, { params: { site_id: site.site_id } });
+        const response = await axios.get(`${API}/similarity/features/`, { params: { site_id: site.site_id, representation: representation.value } });
         if (requestId !== availabilityRequest || selectedSite.value?.site_id !== site.site_id) return;
         featureOptions.value = response.data.features || [];
+        pcaReport.value = response.data.pca || null;
         availabilityAsOf.value = response.data.as_of_date || null;
-        selectedFeatures.value = featureOptions.value.filter(feature => feature.available && feature.selectable !== false && feature.default_selected !== false).map(feature => feature.key);
+        const previous = selectionByMode.get(representation.value);
+        selectedFeatures.value = featureOptions.value.filter(feature => feature.available && feature.selectable !== false && (previous ? previous.includes(feature.key) : feature.default_selected !== false)).map(feature => feature.key);
       } catch (requestError) {
         if (requestId === availabilityRequest) {
           featureError.value = requestError.response?.data?.error || 'Could not load feature availability.';
@@ -229,18 +268,22 @@ export default {
     function chooseFirst() { if (suggestions.value.length) selectSite(suggestions.value[0]); }
     async function runSearch() {
       if (!selectedSite.value) return;
+      const requestId = ++rankingRequest;
+      const siteId = selectedSite.value.site_id;
       loading.value = true;
       error.value = '';
       results.value = null;
       try {
         const response = await axios.get(`${API}/similarity/search/`, {
-          params: { site_id: selectedSite.value.site_id, k: 10, features: selectedFeatures.value.join(','), weighting_mode: weightingMode.value },
+          params: { site_id: selectedSite.value.site_id, k: 10, features: selectedFeatures.value.join(','), weighting_mode: weightingMode.value, representation: representation.value, pca_fit_id: pcaReport.value?.fit_id },
         });
-        results.value = response.data;
+        if (requestId === rankingRequest && siteId === selectedSite.value?.site_id) results.value = response.data;
       } catch (requestError) {
-        error.value = requestError.response?.data?.error || 'Could not rank similar sites.';
-      } finally { loading.value = false; }
+        if (requestId === rankingRequest) error.value = requestError.response?.data?.error || 'Could not rank similar sites.';
+      } finally { if (requestId === rankingRequest) loading.value = false; }
     }
+    function queryDimension(key) { return (results.value?.representation === 'pca' ? results.value.query.dimension_values : results.value.query.similarity_features)?.[key]; }
+    function caseDimension(item, key) { return (results.value?.representation === 'pca' ? item.dimension_values : item.similarity_features)?.[key]; }
     function percent(value) { return value == null ? 'Unavailable' : `${(Number(value) * 100).toFixed(1)}%`; }
     function formatMetric(value, metric) {
       if (value == null || !Number.isFinite(Number(value))) return 'Unavailable';
@@ -270,13 +313,19 @@ export default {
       if (!results.value || !selectedSite.value) return;
       emit('show-on-map', { querySiteId: selectedSite.value.site_id, siteIds: [...new Set([selectedSite.value.site_id, ...results.value.cases.map(item => item.site_id)])] });
     }
-    onBeforeUnmount(() => { if (searchTimer) window.clearTimeout(searchTimer); });
-    return { weightingMode, availabilityAsOf, searchText, suggestions, selectedSite, results, loading, error, searchError, availabilityLoading, featureOptions, selectedFeatures, featureError, featureGroups, featureRows, resultsStale, selectSite, chooseFirst, runSearch, selectAllAvailable, clearFeatureSelection, percent, formatMetric, eventLabel, isUnavailable, displayFeature, featureStatus, featureWeight, showOnMap };
+    onBeforeUnmount(() => { rankingRequest += 1; availabilityRequest += 1; if (searchTimer) window.clearTimeout(searchTimer); });
+    return { representation, pcaReport, featureFilter, queryDimension, caseDimension, weightingMode, availabilityAsOf, searchText, suggestions, selectedSite, results, loading, error, searchError, availabilityLoading, featureOptions, selectedFeatures, featureError, featureGroups, featureRows, resultsStale, selectSite, chooseFirst, runSearch, selectAllAvailable, clearFeatureSelection, percent, formatMetric, eventLabel, isUnavailable, displayFeature, featureStatus, featureWeight, showOnMap };
   },
 };
 </script>
 
 <style scoped>
+.pca-report { margin: 10px 0; padding: 12px; background: #eff6ff; border-radius: 8px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.pca-report ul { padding-left: 20px; max-height: 180px; overflow: auto; }
+.pca-report details { margin-top: 8px; }
+.feature-filter input { width: 100%; }
+.feature-picker select { max-width: 100%; margin: 5px 0; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: white; color: #334155; font: inherit; }
+
 .similarity-page { height: 100%; overflow: auto; padding: clamp(16px, 3vw, 34px); background: #f5f7fb; color: #1e293b; }
 .page-header, .case-heading, .ranking-summary { display: flex; align-items: center; gap: 14px; }
 .page-header { justify-content: space-between; margin-bottom: 20px; }
@@ -302,12 +351,12 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .picker-status { padding: 12px 0; color: #64748b; font-size: 12px; }
 .picker-actions { display: flex; gap: 7px; margin: 10px 0; }
 .picker-actions button { padding: 6px 9px; background: #e2e8f0; color: #334155; font-size: 11px; }
-.feature-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; max-height: 370px; overflow: auto; padding: 2px; }
-.feature-groups fieldset { min-width: 0; padding: 8px; border: 1px solid #e2e8f0; border-radius: 7px; }
+.feature-groups { display: block; max-height: 430px; overflow: auto; padding: 2px; }
+.feature-groups fieldset { min-width: 0; padding: 10px; margin-bottom: 10px; border: 1px solid #e2e8f0; border-radius: 7px; }
 .feature-groups legend { padding: 0 4px; color: #475569; font-size: 10px; font-weight: 700; }
-.feature-choice { display: flex; min-width: 0; align-items: center; gap: 6px; padding: 4px 2px; color: #334155; font-size: 10px; cursor: pointer; }
+.search-card .feature-choice { display: grid; grid-template-columns: 16px minmax(0, 1fr) minmax(70px, 110px); min-width: 0; align-items: center; gap: 10px; padding: 7px 2px; color: #334155; font-size: 12px; line-height: 1.5; cursor: pointer; }
 .feature-choice input { flex: 0 0 auto; width: 13px; height: 13px; margin: 0; padding: 0; }
-.feature-choice > span { flex: 1; text-transform: capitalize; }
+.feature-choice > span { flex: 1; text-transform: none; }
 .feature-choice-value { max-width: 80px; overflow: hidden; color: #64748b; text-overflow: ellipsis; white-space: nowrap; }
 .feature-choice-unavailable, .unavailable-label { color: #b91c1c !important; }
 .feature-description { min-width: 0; }

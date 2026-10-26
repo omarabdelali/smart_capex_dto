@@ -19,6 +19,11 @@ def feature_statuses(site, vector, include_current=False):
             statuses[key]={'code':'duplicate_alias_display_only','reason':'Display alias of avg_users, the cluster active-user sum. Not weighted twice.','selectable':False}
             continue
         if not GowerDistance._is_missing(vector.get(key)):
+            if key == 'avg_building_height_m':
+                statuses[key] = {'code':'land_cover_height_prior','reason':
+                    'Class-based estimate, not measured average height: urban 18 m, suburban 8 m, rural 4 m; forest/water use a 0 m convention. Retained under the approved static-context policy.',
+                    'selectable':True}
+                continue
             statuses[key] = {'code':'available','reason':None,'selectable':True}
             continue
         code, reason = 'missing_measurement','No supported measurement is available for this feature and cutoff.'

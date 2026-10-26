@@ -206,10 +206,11 @@
                 <span class="value">{{ features.clutter.pct_building_area_1km?.toFixed(1) || 'N/A' }}%</span>
               </div>
               <div class="info-item">
-                <span class="label">Avg Building Height:</span>
+                <span class="label">Building Height Estimate:</span>
                 <span class="value">{{ features.clutter.avg_building_height_m?.toFixed(1) || 'N/A' }} m</span>
               </div>
             </div>
+            <p class="cell-plan-note">Land-cover class estimate, not a measured building average: urban 18 m, suburban 8 m, rural 4 m. Forest/water use a 0 m convention; this does not establish that buildings are absent.</p>
           </div>
           <p v-else class="no-data">No clutter features available</p>
         </div>

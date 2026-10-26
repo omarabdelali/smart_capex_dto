@@ -192,4 +192,6 @@ GEOGRAPHIC_DIR = DATA_DIR / 'geographic'
 DEM_VRT = GEOGRAPHIC_DIR / 'dem' / 'copernicus_glo30.vrt'
 WORLDCOVER_VRT = GEOGRAPHIC_DIR / 'worldcover' / 'esa_worldcover_v200.vrt'
 OSM_BUILDINGS = GEOGRAPHIC_DIR / 'osm' / 'tunisia_buildings.gpkg'
-GHSL_HEIGHTS = GEOGRAPHIC_DIR / 'ghsl' / 'ghs_built_s_e2025_r2023a_54009_100_v1_0_tun.tif'
+GHSL_BUILT_SURFACE = GEOGRAPHIC_DIR / 'ghsl' / 'ghs_built_s_e2025_r2023a_54009_100_v1_0_tun.tif'
+# GHS-BUILT-S measures square metres of built-up surface, not height.
+GHSL_HEIGHTS = None  # No GHS-BUILT-H height raster is installed.

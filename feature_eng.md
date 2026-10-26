@@ -490,3 +490,78 @@ Checks actually run so far: full 66-test suite passed, including missing versus 
 2026-10-26 final approved-context verification: measured zero PRBs are preserved as zero capacity rather than replaced by an older positive value; strict MHz mapping still rejects zero/unmapped PRBs. The KPI-only bulk refresh (python manage.py refresh_approved_context --configuration-only) updated all 3,441 configuration rows with zero errors. Final supported MHz count is 1,818 (supersedes the earlier 1,820 count); sector/PRB capacity counts remain 2,706. Static cluster membership is now shared by cluster baselines, scoped user ratios and CBR cluster scope; outcome recipients still require pre-cutoff activity and noise sites never pool together. All 3,441 scoped user profiles were refreshed: 3,260 have supported values, 181 remain unavailable, zero errors.
 
 Final full suite: 68 tests passed; Django check and migration consistency passed. Frontend production build passed with the existing large-chunk advisory. Live Edge verified all 94 feature fields, historical-year static population/geography eligibility, KPI-projected sectors, correctly labelled PRB capacity, strict unmapped MHz exclusion, previous-month summed cluster users, sector inheritance of cluster ID, display-only identifiers/aliases, optional terrain relief distinct from land-cover clutter, and matching popup/similarity values on desktop/mobile, with zero page errors. Independent TAT_0055 raw-cell/cluster/DEM reconciliation reported zero mismatches. Evidence: docs/verification/approved_context/data-audit.json and browser-report.json. feature_eng.md is the current formula reference; older dated exclusion policies are superseded by this approved static-context policy.
+
+
+## 2026-10-26 - Similarity review, PCA representation and Data Explorer
+
+The original registry remains **94 fields (81 numeric, 13 categorical)**. PCA creates a separate, query/pool-specific list of principal components; it does not delete or rename original features. Cluster ID and the duplicate cluster user-sum alias never contribute to distance. Unsupported inputs remain NULL. Original per-feature mode retains the pre-production fallback weights for some deselected fields; the picker now explains this. Equal-per-group and PCA score explicitly selected dimensions only.
+
+### Calculation review
+
+The review follows the actual event-safe vector service, not undated persisted legacy rows. Site performance uses up to three complete pre-event months; cluster baselines use exactly the preceding calendar month. Users are summed across reporting cells. CQI, PRB utilization, throughput, delay, availability and the three user ratios pool their paired numerator/denominator components. PRB capacity has PRB units, not Mbps. Strict +/-5 PRB-to-MHz mapping and honest NULL bandwidth remain unchanged. Geography, estimated building height and population retain the approved static assumption; antenna height uses positive plan values or the approved 25 m fallback.
+
+Remaining interpretation limits: availability exposure is calendar-month seconds, not independently measured uptime exposure; retained CQI histogram statistics do not record partial-bin coverage; site labels represent the primary detected event, not every later action at that site; current road context is optional and uncalibrated. The legacy Gower name-based grouping and linear treatment of directional angles remain unchanged for compatibility. PCA encodes azimuth/aspect as sine and cosine to avoid the 0/360 discontinuity. PCA variance is not evidence of predictive value; CBR still uses the existing temporal safeguards and ranking.
+
+### PCA method and selection
+
+Implementation: services/models/similarity/pca.py. Fit uses the same frozen-event hierarchy as retrieval. Query values never train the scaler or PCA; query availability selects the usable input mask. Numeric road fields stay outside PCA to retain a separately enforceable 5% budget. Categorical fields remain categorical. Display-only aliases/IDs, query-missing fields, fields with <95% observed candidate coverage, and constant fields are excluded with reasons. At least two varying encoded inputs and three complete candidates are required. Complete rows must cover at least 50% of the filtered pool; if necessary, greedily remove inputs whose removal recovers most complete rows. No mean/zero/median imputation is performed. These coverage and variance thresholds are explicit modelling priors, not calibrated guarantees.
+
+For candidate-only mean mu_j and population standard deviation sigma_j, z_ij = (x_ij - mu_j) / sigma_j. Directions are first mapped to sin(theta) and cos(theta). Full-SVD PCA produces component scores PC_ik = sum_j(z_ij * loading_kj). Component signs are fixed by making the largest absolute loading positive. Retain the smallest leading set reaching **90% cumulative explained variance**; show each component's variance, cumulative variance, complete loading list and leading contributors. A candidate-matrix fingerprint prevents the picker and search from silently using different fits. Missing-candidate exclusions and source-column exclusions are visible.
+
+Retrieval distance on selected PCs is min(1, abs(query_PC - case_PC)/(candidate_PC_p95 - candidate_PC_p5)); zero-range dimensions contribute zero. Categorical distance is 0/1. Selected, compatible roads use existing robust original-feature ranges. Weights normalize per pair: equal per dimension or equal per group (all PCs share one group); road total is capped at 5%, and roads alone cannot rank. The comparison table exposes scores, actual weights and dimensions used. This is an optional PCA/Gower-style retrieval representation, not PCA added invisibly to the original features and not a CBR prediction model.
+
+A local disposable profile cache avoids repeated raster intersections. SQLite/source/config/code revisions invalidate it; it expires after 24 hours. Non-file databases bypass this cache. Frozen event labels filter the candidate set before expensive raster/KPI extraction, without reading current configuration labels. The cache stores calculated profiles only; each PCA is fitted on the current filtered candidates. This is retrospective case exploration: later historical cases can be retrieved, so PCA is not used for event-time prediction validation.
+
+Reference for centring, full-SVD PCA, loadings and explained variance: https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.PCA.html . Scaling: https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.StandardScaler.html . Missingness policy and road caps are project rules, not sklearn defaults.
+
+### Data Explorer
+
+New navigation page with three datasets: **16 retained monthly raw counters/components**, **11 calculated monthly KPI metrics**, and **94 event-safe similarity fields**. Raw means imported cell-month values; CQI sufficient statistics and calendar exposure are explicitly labelled import-derived components, not untouched instrument samples. Individual CQI histogram bins and other unimported CSV columns are not represented as stored counters.
+
+Filters: site/cell text, exact site ID, cell name/ID, cluster (including -1), technology, inclusive month range, selected columns, numeric thresholds/exact values, categorical equality and NULL/present. Calculated scopes: cell, site, cluster, Tier 1 (0-2 km), Tier 2 (2-5 km); tiers require an origin site and exclude it. Noise sites remain independent singleton clusters. Filters apply before aggregation and reporting-cell/site counts describe the filtered population. Profile mode uses an optional cutoff month instead of a measurement-month range; technology/cell filters select whole-site profiles. Missing values remain NULL and actual zeros display as zero. Pagination is deterministic, limited to 200 rows per page. CSV exports only the displayed page and protects string cells against spreadsheet formula execution.
+
+Read-only API: /api/explore/metadata/ and /api/explore/. Similarity adds representation=original|pca to both availability and search; search accepts pca_fit_id from the picker (409 if changed). Logic lives in services/data_explorer.py and services/models/similarity/, with thin HTTP views. No schema migration or raw-counter rewrite is required.
+
+Validation evidence and measured candidate statistics are recorded in the dated audit below when complete; no pending check is marked passed.
+
+
+### 2026-10-26 - Measured feature review (1,380 detected-event site profiles)
+
+The audit ran the actual event-safe feature builder for all 1,380 detected-event sites in the 3,441-site inventory (890,674 monthly KPI records). These are one primary-event profile per site, not 4,566 independent event observations. Evidence: docs/verification/similarity_pca/review.json; reproduce with scripts/audit_similarity_pca.py through manage.py shell.
+
+- **12 all-missing fields**: legacy total_capacity_after_mbps; n_2g_sites_2km/n_3g_sites_2km; avg_traffic_ul_gb, peak_hour_traffic_gb, peak_hour_users, avg_rsrp_dbm, congestion_hours_per_day; tech_before_2g/3g and tech_after_2g/3g. These remain visible and unavailable, not zero-filled.
+- **3 constant-when-observed fields**: antenna_height_m (25 m fallback), tech_added (4G), tech_after_4g (true). They add no observed discrimination in this pool. Keep them for later real height/multi-technology data; PCA drops constant numeric inputs.
+- **25 numeric pairs with abs(Pearson r) >= 0.95**, measured on available paired profiles (minimum 20). Perfect duplicates include n_sites_2km, n_4g_sites_2km and n_tier1 in this LTE-only reconstruction; fixed-buffer road_km_weighted and road_density_weighted_km_km2; and the already display-only cluster_avg_users alias of avg_users. BW vs PRB capacity has r=0.999841 on 513 supported pairs. These are observational correlations, not causal or predictive validation.
+- Recommend avoiding duplicate dimensions in the production original-feature defaults, using group-balanced weights during exploration, retaining PRB capacity when strict MHz is unavailable, and calibrating high-correlation ANP/road subsets using event-level ablation before changing CBR. No original field is deleted by this change.
+
+**Actual PCA example - TAT_0055 / 6306:** 301 hierarchy-matched candidate sites, 297 complete rows, four excluded cases, 38 encoded numeric inputs -> 13 principal components, 90.3588% retained variance. PC1's leading loadings describe edge score, empty angular bins and the largest empty arc; PC4 is led by terrain roughness and slope. This specific fit excludes several performance KPIs because their candidate coverage is below 95%; the reduced list is therefore mainly structural/geographic. Use the original list when those sparse KPI inputs matter. The input exclusions and complete loading matrix are shown in the UI. Component counts/loadings vary with the query's supported inputs and matching pool; 13 is not a global fixed schema.
+
+There is no claim that PCA improves KPI prediction accuracy. The PCA option is exploratory retrieval; CBR remains on its existing feature representation. The next modelling step is event-level, time-separated evaluation of original/group-balanced/PCA representations, with complete-case coverage reported alongside prediction errors.
+
+
+### 2026-10-26 - Final PCA / Data Explorer validation
+
+Completed the planned review and implementation. The audit calculated all 1,380 candidate-site profiles and reported 12 entirely unsupported fields, three constant-when-observed fields and 25 high-correlation pairs. The data catalog contains the full 94-field availability table and correlation table. TAT_0055 PCA retained 13 components from 38 encoded inputs, explaining 90.3588% variance across 297 complete candidates out of 301 matching cases. All original dimensions remain inspectable. Sparse performance fields excluded from this example PCA are explicitly disclosed; PCA is optional retrieval, not a validated replacement for CBR.
+
+Checks actually completed on the final implementation:
+- All 80 Django tests passed (including 12 new PCA/explorer tests).
+- Django system check and migration consistency passed; no migration required.
+- Final Vite production build passed (93 modules); existing >500 kB bundle advisory remains.
+- Live headless Edge passed raw filters and CSV export, calculated cluster sums, missing-feature filtering, cutoff visibility, mobile explorer layout, PCA variance/loadings, real top-10 ranking/comparison, and switching back to all 94 original fields. Zero page errors.
+- Live original-feature equal-per-group search returned ten cases with normalized actual weights summing to one; cluster users remained 75.4926.
+- git diff --check passed (line-ending conversion notices only).
+
+Artifacts: docs/verification/similarity_pca/review.json, browser-report.json, raw-example.csv, and desktop/mobile screenshots. Reproduction: scripts/audit_similarity_pca.py and scripts/verify_pca_explorer_browser.py. Source formulas and assumptions are documented in feature_eng.md and spec/smart_capex_data_catalog_phase1.md. The local backend was refreshed to serve the new APIs.
+
+
+### 2026-10-26 - Investigation of repeated 18 m building height
+
+Audited all 3,441 ClutterFeatures rows: urban 18 m = 1,887 sites; suburban 8 m = 666; rural 4 m = 262; forest 0 m = 612; water 0 m = 14. These are deterministic land-cover class priors in ClutterFeatureExtractor.to_dict(), not observed averages of building heights. The field varies only when the dominant class varies and therefore adds no independent information beyond that class. It also influences absolute antenna elevation and neighboring antenna-elevation estimates through the approved DEM + estimated building height + mast-height formula.
+
+Read-only fresh extraction reproduced BIZ_0033 (1534): 50.232912% built-up WorldCover, urban -> 18 m; TAT_0055 (6306): 54.757968% built-up, urban -> 18 m. The class threshold is >50% urban, >20% suburban. The displayed repetition is caused by the lookup, not rounding or stale calculation in these examples.
+
+Local source inspection: the OSM GeoPackage has fid, geometry, osm_id, code, fclass, name and type, with no height or building:levels attributes. The installed ghs_built_s_e2025_r2023a_54009_100_v1_0_tun.tif is built-up surface area in square metres, not height. Corrected the misleading settings alias: GHSL_BUILT_SURFACE points to that file; GHSL_HEIGHTS is None until an actual height product is installed. Official product descriptions: https://human-settlement.emergency.copernicus.eu/ghs_buS2023.php (surface) and https://human-settlement.emergency.copernicus.eu/ghs_buH2023.php (estimated height).
+
+Corrected popup and shared similarity/Data Explorer labels to Building height estimate (land-cover class prior), with visible provenance. Forest/water zero is explicitly a prior convention, not proof of absent buildings. Kept existing user-approved static estimates and dependent calculations; no source data, feature values or schema were rewritten. Recommendation: replace this class proxy with footprint-weighted positive building-height observations/estimates from a real height product when acquired, report coverage, and avoid double-counting the class proxy alongside dominant_clutter in production selection.
+
+Validation actually run: complete stored-value distribution; local OSM schema and raster inspection; fresh WorldCover/OSM extraction for sites 1534 and 6306; Django system check; 20 approved-context/PCA/explorer regression tests; frontend production build. All passed; the existing large-bundle advisory remains. No new measurement-based height calculation is claimed.

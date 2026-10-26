@@ -9,6 +9,7 @@
       <button type="button" :aria-current="activePage === 'map' ? 'page' : null" @click="activePage = 'map'">Site map</button>
       <button type="button" :aria-current="activePage === 'clusters' ? 'page' : null" @click="activePage = 'clusters'">Cluster analysis</button>
       <button type="button" :aria-current="activePage === 'similarity' ? 'page' : null" @click="activePage = 'similarity'">Similarity</button>
+      <button type="button" :aria-current="activePage === 'explore' ? 'page' : null" @click="activePage = 'explore'">Data Explorer</button>
       <button type="button" :aria-current="activePage === 'prediction' ? 'page' : null" @click="activePage = 'prediction'">CBR impact</button>
       <button type="button" :aria-current="activePage === 'sync' ? 'page' : null" @click="activePage = 'sync'">Feature sync</button>
     </nav>
@@ -16,6 +17,7 @@
     <main class="app-main">
       <ClusterMapView v-if="activePage === 'map'" :focus-sites="mapFocus" @clear-focus="mapFocus = null" />
       <ClusterAnalysisView v-else-if="activePage === 'clusters'" />
+      <DataExplorerView v-else-if="activePage === 'explore'" />
       <FeatureSyncView v-else-if="activePage === 'sync'" />
       <CBRPredictionView v-else-if="activePage === 'prediction'" />
       <SimilarityExplorerView v-show="activePage === 'similarity'" @show-on-map="showSimilarityOnMap" />
@@ -30,6 +32,7 @@ import ClusterAnalysisView from './components/ClusterAnalysisView.vue';
 import SimilarityExplorerView from './components/SimilarityExplorerView.vue';
 import FeatureSyncView from './components/FeatureSyncView.vue';
 import CBRPredictionView from './components/CBRPredictionView.vue';
+import DataExplorerView from './components/DataExplorerView.vue';
 
 export default {
   name: 'App',
@@ -38,7 +41,8 @@ export default {
     ClusterAnalysisView,
     SimilarityExplorerView,
     FeatureSyncView,
-    CBRPredictionView
+    CBRPredictionView,
+    DataExplorerView
   },
   setup() {
     const activePage = ref('map');
