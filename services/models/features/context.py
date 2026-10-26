@@ -71,46 +71,30 @@ def configuration_feature_values(site):
     """
     cells = list(site.cells.all())
     technologies = {cell.technology for cell in cells}
-    added = [cell for cell in cells if cell.is_launched and cell.launch_date]
-    event_date = site.launch_date or min((cell.launch_date for cell in added), default=None)
-    kpi_fields = (
-        'traffic_user_avg', 'thrp_bits_dl', 'thrp_bits_ul', 'prb_util_dl_pct',
-        'prb_util_ul_pct', 'rrc_conn_avg', 'active_users_avg', 'cqi_avg',
-        'rsrp_avg_dbm',
-    )
+    from services.models.preprocessing.network_events import primary_event
+    event = primary_event(site)
+    event_date = event.effective_date if event else site.launch_date
     before = set()
     if event_date:
-        activity = Q()
-        for field in kpi_fields:
-            activity |= Q(**{f'{field}__gt': 0}) | Q(**{f'{field}__lt': 0})
         before = set(MAOSMonthlyKPI.objects.filter(
-            cell__site=site, month_date__lt=event_date,
-        ).filter(activity).values_list('cell__technology', flat=True).distinct())
-
-    if site.is_launched:
-        event_type = 'NEW_SITE'
-        tech_added = ''
-    elif added:
-        newly_serving = {cell.technology for cell in added} - before
-        tech_added = next(iter(newly_serving)) if len(newly_serving) == 1 else ''
-        event_type = 'TECH_ADD' if newly_serving else 'SECTOR_ADD'
-    else:
-        event_type = 'BASELINE'
-        tech_added = ''
+            cell__site=site, month_date__lt=event_date, thrp_bits_dl__gt=0,
+        ).values_list('cell__technology', flat=True).distinct())
+    event_type = event.event_type if event else 'BASELINE'
+    added_technologies = event.details.get('technologies', []) if event and event.event_type == 'TECHNOLOGY_ADDED' else []
+    tech_added = added_technologies[0] if len(added_technologies) == 1 else ''
 
     sector_keys = {round(cell.azimuth / 5) * 5 for cell in cells}
-    return {
+    values = {
         'event_type': event_type,
         'tech_added': tech_added,
+        'bands_added': ', '.join(event.details.get('bands', [])) if event and event.event_type == 'FREQUENCY_BAND_ADDED' else '',
         'has_2g_before': '2G' in before,
         'has_3g_before': '3G' in before,
         'has_4g_before': '4G' in before,
         'has_2g_after': '2G' in technologies,
         'has_3g_after': '3G' in technologies,
         'has_4g_after': '4G' in technologies,
-        # No historical cell-plan snapshot exists to distinguish a new band
-        # from the existing bands on the launched cell.
-        'bands_added': '',
+        # Sector/height/bandwidth fields below are current-plan summaries.
         'sector_count_after': len(sector_keys),
         'cells_per_sector_after': len(cells) / len(sector_keys) if sector_keys else 0,
         'antenna_height_m': sum(cell.antenna_height_m for cell in cells) / len(cells) if cells else 0,
@@ -118,6 +102,19 @@ def configuration_feature_values(site):
         # The cell plan has no vendor capacity or spectral-efficiency input.
         'total_capacity_after_mbps': 0,
     }
+    from services.models.features.approved_context import post_event_configuration
+    from services.models.preprocessing.network_events import effective_event_date
+    from services.models.similarity.historical import month_offset
+    from datetime import date
+    cutoff=effective_event_date(site)
+    if cutoff is None:
+        latest=MAOSMonthlyKPI.objects.aggregate(month=Max('month_date'))['month']
+        cutoff=month_offset(latest,1) if latest else date.today().replace(day=1)
+    derived=post_event_configuration(site,cutoff)
+    derived.pop('post_event_configuration_support')
+    values.update(derived)
+    return values
+
 
 
 def prelaunch_maos_values(site):
@@ -125,7 +122,7 @@ def prelaunch_maos_values(site):
     if not site.is_launched or not site.launch_date:
         return None
     # Monthly data cannot represent an exact 30-day window; use the latest
-    # recorded month before the zero-KPI launch observation.
+    # recorded month before traffic-confirmed group completion.
     month = MAOSMonthlyKPI.objects.filter(
         cell__site=site, month_date__lt=site.launch_date
     ).aggregate(month=Max('month_date'))['month']

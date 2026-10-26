@@ -4,6 +4,20 @@ Django admin configuration for Smart CAPEX models.
 
 from django.contrib import admin
 from .models import RoadFeatures
+from .models import UserContextFeatures
+from .models import RadioNetworkEvent
+
+
+@admin.register(RadioNetworkEvent)
+class RadioNetworkEventAdmin(admin.ModelAdmin):
+    list_display = ['site','event_type','effective_date','previous_bandwidth_mhz','new_bandwidth_mhz','is_current']
+    list_filter = ['event_type','is_current','effective_date']
+    search_fields = ['site__site_id','site__site_name','event_key']
+    readonly_fields = ['event_key','detector_version','details']
+
+@admin.register(UserContextFeatures)
+class UserContextFeaturesAdmin(admin.ModelAdmin):
+    list_display = ['site','profile_as_of_date','tier1_edge_user_share','tier2_edge_user_share','cluster_edge_user_share']
 
 @admin.register(RoadFeatures)
 class RoadFeaturesAdmin(admin.ModelAdmin):

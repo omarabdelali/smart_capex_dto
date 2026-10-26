@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from django.test import TestCase
 
-from core.models import Cell, Site, MAOSMonthlyKPI
+from core.models import Cell, Site, MAOSMonthlyKPI, RadioNetworkEvent
 from core.models.features import ConfigurationFeatures, ClusterFeatures
 from services.models.similarity.feature_vector import build_site_similarity_vector
 from services.models.prediction.cbr_impact import _event_group_responses, build_cbr_impact_prediction
@@ -38,8 +38,8 @@ class HistoricalFeatureTests(TestCase):
         self.assertEqual(vector['pre_profile_months_available'], 1)
         self.assertAlmostEqual(vector['pre_profile_completeness'], 1/24)
         self.assertEqual(vector['n_sites_1km'], 1)  # Future neighbor excluded.
-        self.assertIsNone(vector['antenna_height_m'])
-        self.assertIsNone(vector['cluster_id'])
+        self.assertEqual(vector['antenna_height_m'],30)
+        self.assertEqual(vector['cluster_id'],-1)
 
     def test_future_values_and_current_configuration_do_not_change_historical_vector(self):
         before = build_site_similarity_vector(self.origin)
@@ -49,11 +49,50 @@ class HistoricalFeatureTests(TestCase):
         after = build_site_similarity_vector(Site.objects.get(pk=self.origin.pk))
         self.assertEqual(before, after)
 
-    def test_2025_population_is_not_used_for_2024_event(self):
+    def test_population_is_static_context_for_2024_event_by_approved_assumption(self):
         self.origin.launch_date = date(2024,6,1)
         vector = build_site_similarity_vector(self.origin)
-        self.assertIsNone(vector['population_tier1'])
-        self.assertIsNone(vector['population_tier2'])
+        self.assertEqual(vector['population_tier1'],12000)
+        self.assertEqual(vector['population_tier2'],65000)
+
+    def test_event_labels_and_evidenced_lte_states_survive_config_exclusion(self):
+        MAOSMonthlyKPI.objects.filter(cell=self.cell,month_date=date(2025,5,1)).update(thrp_bits_dl=0)
+        RadioNetworkEvent.objects.create(site=self.origin,event_key='tech',event_type='TECHNOLOGY_ADDED',
+            effective_date=date(2025,6,1),detector_version='test',
+            details={'technologies':['4G'],'bands':['B3'],'cell_ids':[self.cell.cell_id]})
+        vector=build_site_similarity_vector(self.origin)
+        self.assertEqual(vector['tech_added'],'4G')
+        self.assertEqual(vector['bands_added'],'B3')
+        self.assertIs(vector['tech_before_4g'],False)
+        self.assertIs(vector['tech_after_4g'],True)
+        self.assertIsNone(vector['tech_before_3g'])
+        self.assertIsNone(vector['tech_after_3g'])
+        self.assertEqual(vector['antenna_height_m'],30)
+        MAOSMonthlyKPI.objects.filter(month_date__gte=date(2025,6,1)).update(thrp_bits_dl=999e9)
+        self.assertEqual(build_site_similarity_vector(self.origin),vector)
+
+    def test_configuration_needs_kpi_cells_but_population_is_static(self):
+        from services.models.similarity.availability import feature_statuses
+        ConfigurationFeatures.objects.create(site=self.origin,event_type='TECHNOLOGY_ADDED',
+            sector_count_after=4,antenna_height_m=25,total_bw_after_mhz=180.8)
+        vector=build_site_similarity_vector(self.origin,as_of_date=date(2024,6,1))
+        before=vector.copy()
+        statuses=feature_statuses(self.origin,vector,include_current=True)
+        self.assertEqual(statuses['sector_count_after']['code'],'no_kpi_confirmed_configuration')
+        self.assertEqual(statuses['population_tier1']['code'],'available')
+        self.assertEqual(statuses['total_capacity_after_mbps']['code'],'legacy_mbps_not_defined')
+        self.assertEqual(vector,before)
+        self.assertEqual(vector['population_tier1'],12000)
+        self.assertIsNone(vector['sector_count_after'])
+
+    def test_zero_user_share_available_while_peak_ratio_has_zero_denominator_reason(self):
+        from services.models.similarity.availability import feature_statuses
+        vector={'feature_as_of_date':'2023-12-01','tier1_edge_user_share':0,
+            'tier1_edge_user_peak_ratio':None,'user_context_support':{'tier1':{'ratios':{
+                'edge_user_peak_ratio':{'unavailable_reason':'zero_denominator'}}}}}
+        statuses=feature_statuses(self.origin,vector)
+        self.assertEqual(statuses['tier1_edge_user_share']['code'],'available')
+        self.assertEqual(statuses['tier1_edge_user_peak_ratio']['code'],'zero_denominator')
 
     def test_future_outcome_months_are_not_training_targets(self):
         months = {date(2025,month,1): {'traffic_bits': 8e9*month} for month in (1,2,3,4,5,6,7)}

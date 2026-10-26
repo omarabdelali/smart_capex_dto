@@ -4,14 +4,15 @@ from datetime import date
 from statistics import median
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Count, F, Max, Min, Q, Sum
+from django.db.models import Max, Min
 
 from core.models import MAOSMonthlyKPI
 from services.models.preprocessing.maos_aggregation import normalize_monthly_totals
 from services.models.features.population import population_features
 from services.models.features.population import POPULATION_FIELDS
-from .historical import month_offset, load_network, context_features
+from .historical import month_offset, load_network, context_features, event_feature_values
 from services.models.features.road_features import road_similarity_values
+from services.models.features.maos_context import user_context_values, monthly_annotations
 
 
 PERFORMANCE_FIELDS = (
@@ -44,9 +45,8 @@ def build_site_similarity_vector(site, as_of_date=None, snapshot_cache=None, all
     cluster = _related(site, 'cluster_features')
     prelaunch = _related(site, 'prelaunch_kpi')
     history = MAOSMonthlyKPI.objects.filter(cell__site=site)
-    event_date = site.launch_date or site.cells.filter(
-        is_launched=True, launch_date__isnull=False
-    ).aggregate(event_date=Min('launch_date'))['event_date']
+    from services.models.preprocessing.network_events import effective_event_date
+    event_date = effective_event_date(site)
     if as_of_date is None:
         latest = history.aggregate(month=Max('month_date'))['month'] if not event_date else None
         as_of_date = event_date or (month_offset(latest, 1) if latest else date.today())
@@ -108,24 +108,10 @@ def build_site_similarity_vector(site, as_of_date=None, snapshot_cache=None, all
         'congestion_hours_per_day',
     )))
 
-    vector.update(population_features(site.latitude, site.longitude) if cutoff >= date(2025, 1, 1)
-                  else dict.fromkeys(POPULATION_FIELDS))
+    vector.update(population_features(site.latitude, site.longitude))
     vector['population_quality'] = vector.pop('quality', None)
     monthly_rows = list(history.filter(month_date__gte=month_offset(cutoff, -3), month_date__lt=cutoff).values('month_date').annotate(
-        traffic_bits=Sum('thrp_bits_dl'),
-        dl_bits=Sum('thrp_bits_dl', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl_last_tti__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
-        dl_last_tti_bits=Sum('thrp_bits_dl_last_tti', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
-        dl_time_ms=Sum('thrp_time_dl_ms', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl_last_tti__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
-        prb_used=Sum('prb_dl_used_avg', filter=Q(prb_dl_used_avg__isnull=False, prb_dl_available__gt=0)),
-        prb_available=Sum('prb_dl_available', filter=Q(prb_dl_used_avg__isnull=False, prb_dl_available__gt=0)),
-        delay_time_ms=Sum('dl_packet_delay_time_ms', filter=Q(dl_packet_delay_time_ms__isnull=False, dl_packet_delay_packets__gt=0)),
-        delay_packets=Sum('dl_packet_delay_packets', filter=Q(dl_packet_delay_time_ms__isnull=False, dl_packet_delay_packets__gt=0)),
-        unavailable_s=Sum('cell_unavail_duration_s', filter=Q(cell_unavail_duration_s__isnull=False, observation_duration_s__gt=0)),
-        observation_s=Sum('observation_duration_s', filter=Q(cell_unavail_duration_s__isnull=False, observation_duration_s__gt=0)),
-        cqi_weighted_total=Sum('cqi_weighted_sum', filter=Q(cqi_weighted_sum__isnull=False, cqi_sample_count__gt=0)),
-        cqi_sample_count=Sum('cqi_sample_count', filter=Q(cqi_weighted_sum__isnull=False, cqi_sample_count__gt=0)),
-        active_users=Sum('active_users_avg'),
-        traffic_users=Sum('traffic_user_avg'), reporting_cells=Count('cell_id', distinct=True),
+        **monthly_annotations(),
     ).order_by('-month_date')[:3])
     monthly_rows.reverse()
     profiles = []
@@ -173,6 +159,7 @@ def build_site_similarity_vector(site, as_of_date=None, snapshot_cache=None, all
         cache[cutoff] = load_network(cutoff)
     vector.update(dict.fromkeys(context_names))
     vector.update(context_features(site, cache[cutoff], cutoff))
+    vector.update(user_context_values(site, cutoff, cache[cutoff]))
     # Legacy records have no verified measurement window; never use their
     # default zeros or undated values as historical model inputs.
     vector.update(dict.fromkeys((
@@ -181,18 +168,23 @@ def build_site_similarity_vector(site, as_of_date=None, snapshot_cache=None, all
     ).split()))
     if historical:
         vector.update(dict.fromkeys(configuration_fields))
-        vector['event_type'] = 'NEW_SITE' if site.is_launched and site.launch_date and site.launch_date.replace(day=1) == cutoff else None
+        from services.models.preprocessing.network_events import primary_event
+        event = primary_event(site)
+        vector['event_type'] = (event.event_type if event and event.effective_date == cutoff else
+                               'SITE_ADDED' if site.is_launched and site.launch_date and site.launch_date.replace(day=1) == cutoff else None)
+        vector.update(event_feature_values(site, cutoff))
         vector.update(dict.fromkeys(('z_antenna_m', 'dominant_clutter', 'clutter_entropy_2km',
                                      'pct_building_area_1km', 'avg_building_height_m')))
         # The only population epoch available locally is 2025. Retain all
         # dimensions in the schema, but do not use it for earlier events.
-    if cutoff < date(2025, 1, 1):
-        vector.update(dict.fromkeys(POPULATION_FIELDS))
+    from services.models.features.approved_context import approved_feature_values
+    vector.update(approved_feature_values(site,cutoff,cache))
     vector['feature_as_of_date'] = cutoff.isoformat()
     vector.update(road_similarity_values(_related(site, 'road_features'), cutoff, allow_current=allow_current_roads))
     vector['feature_timing_note'] = (
-        'Only three complete pre-cutoff calendar months are used. Network context is reconstructed from evidenced LTE activity; '
-        'coordinates are assumed stable. Historical configuration, building/clutter snapshots and undated legacy KPIs are unavailable. '
-        'Terrain shape is treated as static; population is 2025 context and is excluded before 2025.'
+        'Site performance uses three complete pre-cutoff months; cluster pre-launch KPIs use the immediately preceding month. '
+        'Geography, stored land-cover/building estimates and GHSL 2025 population are static context by user-approved assumption. '
+        'Post-event sectors use KPI-evidenced cells joined to the plan; bandwidth and PRB capacity use configuration observed no later than the event month. '
+        'Antenna heights use positive plan values or a 25 m fallback. Cluster IDs are display-only identifiers.'
     )
     return vector

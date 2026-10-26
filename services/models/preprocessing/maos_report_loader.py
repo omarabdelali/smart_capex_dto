@@ -6,7 +6,7 @@ import calendar
 import math
 
 import pandas as pd
-from django.db import transaction
+from django.db import transaction, connection
 
 from core.models import Cell, MAOSMonthlyKPI
 
@@ -19,6 +19,9 @@ class MAOSReportLoader:
     REQUIRED_COLUMNS = {'Date', 'Cell Name'}
     COUNTER_COLUMNS = {
         'L.Traffic.User.Avg',
+        'L.Traffic.User.BorderUE.Avg',
+        'L.Traffic.User.BorderUE.Max',
+        'L.Traffic.User.LowLatency.Avg',
         'L.Thrp.bits.DL(bit)',
         'L.ChMeas.PRB.DL.Used.Avg',
         'L.Traffic.ActiveUser.Avg',
@@ -91,6 +94,9 @@ class MAOSReportLoader:
             records = []
             for row in chunk.itertuples(index=False, name=None):
                 values = dict(zip(chunk.columns, row))
+                def nonnegative(key):
+                    value = number(values,key)
+                    return value if value is not None and value >= 0 else None
                 cqi_values = [number(values, f'L.ChMeas.CQI.DL.{i}') for i in range(16)]
                 cqi_present = any(value is not None for value in cqi_values)
                 cqi_counts = [value if value is not None else 0 for value in cqi_values]
@@ -122,6 +128,9 @@ class MAOSReportLoader:
                     prb_util_ul_pct=None,
                     rrc_conn_avg=None,
                     active_users_avg=number(values, 'L.Traffic.ActiveUser.Avg'),
+                    border_user_avg=nonnegative('L.Traffic.User.BorderUE.Avg'),
+                    border_user_max=nonnegative('L.Traffic.User.BorderUE.Max'),
+                    lowlatency_user_avg=nonnegative('L.Traffic.User.LowLatency.Avg'),
                     cqi_avg=cqi_avg,
                     rsrp_avg_dbm=None,
                     prb_dl_used_avg=prb_used,
@@ -151,6 +160,7 @@ class MAOSReportLoader:
                         'dl_packet_delay_time_ms', 'dl_packet_delay_packets', 'dl_throughput_kbps',
                         'dl_packet_delay_ms', 'cell_unavail_duration_s', 'observation_duration_s',
                         'cell_availability_pct', 'cqi_weighted_sum', 'cqi_sample_count',
+                        'border_user_avg', 'border_user_max', 'lowlatency_user_avg',
                     ],
                     unique_fields=['cell', 'month_date'],
                 )
@@ -158,4 +168,45 @@ class MAOSReportLoader:
 
         stats['missing_counters'] = sorted(self.COUNTER_COLUMNS - set(stats['available_counters']))
 
+        return stats
+
+    def import_user_counters(self):
+        """Update only new user counters and their denominator in linked rows."""
+        columns = {
+            'L.Traffic.User.BorderUE.Avg':'border_user_avg',
+            'L.Traffic.User.BorderUE.Max':'border_user_max',
+            'L.Traffic.User.LowLatency.Avg':'lowlatency_user_avg',
+            'L.Traffic.User.Avg':'traffic_user_avg',
+        }
+        cell_ids = dict(Cell.objects.values_list('cell_name','pk'))
+        stats = {'rows_read':0,'rows_updated':0,'unmatched_cells':0,'invalid_dates':0,
+                 'available_counters':[], 'missing_counters':[],
+                 'nonzero_values':dict.fromkeys(columns,0),'missing_values':dict.fromkeys(columns,0)}
+        allowed = self.REQUIRED_COLUMNS | set(columns)
+        sql = 'UPDATE maos_monthly_kpi SET '+', '.join(f'{field}=%s' for field in columns.values())+' WHERE cell_id=%s AND month_date=%s'
+        for chunk in pd.read_csv(self.csv_path,skiprows=self.REPORT_HEADER_ROW,
+                usecols=lambda key:key.strip() in allowed,chunksize=self.CHUNK_SIZE,low_memory=False):
+            chunk.columns = chunk.columns.str.strip()
+            stats['rows_read'] += len(chunk)
+            stats['available_counters'] = sorted(set(columns)&set(chunk.columns))
+            chunk['month'] = pd.to_datetime(chunk['Date'].astype(str).str.strip(),format='%m-%Y',errors='coerce').dt.date
+            chunk['cell_pk'] = chunk['Cell Name'].astype(str).str.strip().map(cell_ids)
+            stats['unmatched_cells'] += int(chunk.cell_pk.isna().sum())
+            stats['invalid_dates'] += int(chunk.month.isna().sum())
+            for counter in columns:
+                if counter not in chunk:
+                    chunk[counter] = float('nan')
+                chunk[counter] = pd.to_numeric(chunk[counter],errors='coerce')
+                invalid = ~chunk[counter].map(lambda value:pd.notna(value) and math.isfinite(value) and value >= 0)
+                chunk.loc[invalid,counter] = float('nan')
+                stats['nonzero_values'][counter] += int((chunk[counter]>0).sum())
+                stats['missing_values'][counter] += int(chunk[counter].isna().sum())
+            linked = chunk.dropna(subset=['cell_pk','month'])
+            records = []
+            for row in linked[[*columns,'cell_pk','month']].itertuples(index=False,name=None):
+                records.append(tuple(None if pd.isna(value) else float(value) for value in row[:4])+(int(row[4]),row[5]))
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.executemany(sql,records)
+                stats['rows_updated'] += cursor.rowcount
+        stats['missing_counters'] = sorted(set(columns)-set(stats['available_counters']))
         return stats

@@ -2,7 +2,7 @@
 from datetime import date
 
 import numpy as np
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
 from pyproj import Transformer
 from shapely.geometry import MultiPoint, Point
 from sklearn.cluster import DBSCAN
@@ -16,6 +16,31 @@ def month_offset(value, offset):
     index = value.year * 12 + value.month - 1 + offset
     year, month = divmod(index, 12)
     return date(year, month+1, 1)
+
+
+def event_feature_values(site, cutoff):
+    """Recover event labels and technology evidence without current config values."""
+    order = ('SITE_ADDED','TECHNOLOGY_ADDED','FREQUENCY_BAND_ADDED','CELL_ADDED',
+             'BANDWIDTH_UPGRADE','BANDWIDTH_DOWNGRADE')
+    events = [e for e in site.network_events.all() if e.is_current and e.effective_date == cutoff]
+    if not events:
+        return {}
+    kind = min((e.event_type for e in events), key=order.index)
+    relevant = [e for e in events if e.event_type == kind]
+    technologies = {tech for e in relevant for tech in e.details.get('technologies',[])}
+    bands = ','.join(sorted({band for e in relevant for band in e.details.get('bands',[])})) or None
+    values = {'event_type':kind,
+        'tech_added':'/'.join(sorted(technologies)) if kind=='TECHNOLOGY_ADDED' else None,
+        'bands_added':bands if kind in ('TECHNOLOGY_ADDED','FREQUENCY_BAND_ADDED','SITE_ADDED') else None}
+    evidence = {row['cell__technology']:row for row in MAOSMonthlyKPI.objects.filter(
+        cell__site=site,month_date__lt=cutoff,thrp_bits_dl__gte=0,
+    ).values('cell__technology').annotate(observed=Count('pk'),positive=Count('pk',filter=Q(thrp_bits_dl__gt=0)))}
+    for tech in ('2G','3G','4G'):
+        row = evidence.get(tech)
+        before = bool(row['positive']) if row else None
+        values[f'tech_before_{tech.lower()}'] = before
+        values[f'tech_after_{tech.lower()}'] = True if tech in technologies else before
+    return values
 
 
 def load_network(cutoff):
@@ -51,16 +76,11 @@ def network_from_rows(sites, rows):
 
 
 def cluster_members(origin, network):
-    """Scenario cluster using only evidenced pre-event sites plus origin.
-
-    Labels are local to this reconstruction and never become similarity IDs.
-    """
-    members = [record for key, record in network.items() if key != origin.site_id]
-    members.append({'site_id': origin.site_id, 'latitude': origin.latitude, 'longitude': origin.longitude})
-    coords = np.radians([[row['latitude'], row['longitude']] for row in members])
-    labels = DBSCAN(eps=2/6371.0, min_samples=3, metric='haversine', algorithm='ball_tree').fit_predict(coords)
-    label = labels[-1]
-    return [row for row, candidate_label in zip(members, labels) if label != -1 and candidate_label == label]
+    """Static site-cluster membership, restricted to pre-cutoff activity evidence."""
+    identifiers=set(Site.objects.filter(cluster_id=origin.cluster_id).values_list('site_id',flat=True)) if origin.cluster_id!=-1 else {origin.site_id}
+    members=[record for key,record in network.items() if key in identifiers and key!=origin.site_id]
+    members.append({'site_id':origin.site_id,'latitude':origin.latitude,'longitude':origin.longitude})
+    return members
 
 
 def context_features(origin, network, cutoff):

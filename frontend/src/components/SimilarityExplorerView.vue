@@ -26,6 +26,8 @@
         <p class="scope-note">Roads are optional and uncalibrated, capped at 5% of distance weight. Select a non-road feature too. Road values describe the current snapshot, not verified event-time conditions.</p>
         <div class="picker-heading"><div><strong>Features used for similarity</strong><p>Select available query features. Missing candidate values are skipped for that case.</p></div>
           <span>{{ selectedFeatures.length }} selected</span></div>
+        <p v-if="availabilityAsOf" class="feature-profile-date">KPI event cutoff: <strong>{{ availabilityAsOf }}</strong>. Performance excludes the event month; configuration PRBs may use it.</p>
+        <p class="scope-note">Geography, land-cover estimates and population use the approved static-context assumption. Cluster KPIs use the previous calendar month. Antenna height defaults to 25 m when a positive plan value is unavailable. Capacity is measured in PRBs.</p>
         <p v-if="availabilityLoading" class="picker-status" role="status">Checking feature availabilityâ€¦</p>
         <p v-else-if="featureError" class="error-message" role="alert">{{ featureError }}</p>
         <template v-else-if="featureOptions.length">
@@ -33,11 +35,14 @@
           <div class="feature-groups">
             <fieldset v-for="group in featureGroups" :key="group.key">
               <legend>{{ group.label }}</legend>
-              <label v-for="feature in group.features" :key="feature.key" class="feature-choice" :class="{ 'feature-choice-unavailable': !feature.available }">
-                <input v-model="selectedFeatures" type="checkbox" :value="feature.key" :disabled="!feature.available || availabilityLoading">
-                <span>{{ feature.label || feature.key.replaceAll('_', ' ') }}</span>
+              <label v-for="feature in group.features" :key="feature.key" :data-feature-key="feature.key" class="feature-choice" :class="{ 'feature-choice-unavailable': !feature.available }">
+                <input v-model="selectedFeatures" type="checkbox" :value="feature.key" :disabled="!feature.available || feature.selectable === false || availabilityLoading">
+                <span class="feature-description"><span>{{ feature.label || feature.key.replaceAll('_', ' ') }}</span>
+                  <small v-if="feature.reason" class="feature-reason">{{ feature.reason }}</small>
+                  <small v-if="feature.current_value != null" class="feature-current-context">{{ feature.current_label }}: {{ displayFeature(feature.current_value) }} {{ feature.unit }} · inspection only</small>
+                </span>
                 <small v-if="!feature.available" class="unavailable-label">Unavailable</small>
-                <small v-else class="feature-choice-value">{{ displayFeature(feature.value) }} {{ feature.unit }}</small>
+                <small v-else class="feature-choice-value">{{ displayFeature(feature.value) }} {{ feature.unit }}<span v-if="feature.selectable === false"> · display only</span></small>
               </label>
             </fieldset>
           </div>
@@ -47,7 +52,7 @@
       <p v-if="searchError" class="error-message" role="alert">{{ searchError }}</p>
     </section>
 
-    <p class="scope-note">The available MAOS history is LTE-only. Similarity scores rank historical cases; they are not predicted KPI impacts. Tier 1 population covers 0–2 km; Tier 2 covers the separate 2–5 km ring. Population uses native 100 m GHSL 2025 estimates and is unavailable for events before 2025.</p>
+    <p class="scope-note">The available MAOS history is LTE-only. Similarity scores rank historical cases; they are not predicted KPI impacts. Population uses native 100 m GHSL 2025 estimates, treated as stable across event years by the approved assumption. Tier 1 is 0–2 km; Tier 2 is the separate 2–5 km ring.</p>
     <p v-if="results?.query.feature_timing_note" class="scope-note">{{ results.query.feature_timing_note }}</p>
     <p v-if="results" class="scope-note">Population features are mapped counts, without extrapolating missing land. Query land coverage: T1 {{ results.query.population_quality?.tier1?.land_coverage == null ? 'Unavailable' : (100 * results.query.population_quality.tier1.land_coverage).toFixed(1) + '%' }}, T2 {{ results.query.population_quality?.tier2?.land_coverage == null ? 'Unavailable' : (100 * results.query.population_quality.tier2.land_coverage).toFixed(1) + '%' }}. Partial estimates may understate full catchment population.</p>
     <p v-if="loading" class="state-message" role="status">Building pre-event profiles and ranking casesâ€¦</p>
@@ -92,7 +97,7 @@
             <summary>All specification similarity features ({{ featureRows.length }})</summary>
             <div class="feature-table-wrap"><table><thead><tr><th>Feature</th><th>Query site</th><th>Similar site</th><th>Weight</th><th>Score</th></tr></thead>
               <tbody><tr v-for="feature in featureRows" :key="feature.key" :class="{ unavailable: isUnavailable(results.query.similarity_features[feature.key]) || isUnavailable(item.similarity_features[feature.key]) }">
-                <th scope="row">{{ feature.label }}</th><td>{{ displayFeature(results.query.similarity_features[feature.key]) }}</td><td>{{ displayFeature(item.similarity_features[feature.key]) }}</td><td>{{ featureWeight(feature.key, item) }}</td><td>{{ featureStatus(feature.key, item) }}</td>
+                <th scope="row">{{ feature.label }}</th><td>{{ displayFeature(results.query.similarity_features[feature.key]) }}<small class="feature-reason">{{ results.query.feature_statuses?.[feature.key]?.reason }}</small></td><td>{{ displayFeature(item.similarity_features[feature.key]) }}<small class="feature-reason">{{ item.feature_statuses?.[feature.key]?.reason }}</small></td><td>{{ featureWeight(feature.key, item) }}</td><td>{{ featureStatus(feature.key, item) }}</td>
               </tr></tbody></table></div>
           </details>
           <div class="metric-grid">
@@ -124,6 +129,7 @@ export default {
     const results = ref(null);
     const loading = ref(false);
     const availabilityLoading = ref(false);
+    const availabilityAsOf = ref(null);
     const featureOptions = ref([]);
     const selectedFeatures = ref([]);
     const weightingMode = ref('equal_per_feature');
@@ -144,11 +150,12 @@ export default {
       const populationLabels = { population_density_1km_per_km2: 'Population density (1 km) · people/km²', population_tier1: 'Tier 1 population (0–2 km) · people', population_tier2: 'Tier 2 population (2–5 km) · people' };
       const featureRows = computed(() => Object.keys(results.value?.query?.similarity_features || {}).map(key => ({ key, label: populationLabels[key] || featureOptions.value.find(f => f.key === key)?.label || key.replaceAll('_', ' ') })));
     const featureGroups = computed(() => {
-      const labels = { configuration: 'Configuration', prelaunch: 'Pre-launch and LTE KPIs', spatial: 'Spatial context', anp: 'Angular Neighborhood Profile', cluster: 'Cluster context', clutter: 'Terrain and clutter', population: 'Population · GHSL 2025 · 100 m', road_context: 'Road context · optional current snapshot', other: 'Other' };
+      const labels = { configuration: 'Configuration', prelaunch: 'Site pre-event profile and unsupported source fields', cluster_prelaunch: 'Cluster KPIs - month before event', spatial: 'Spatial context', anp: 'Angular Neighborhood Profile', cluster: 'Cluster context', clutter: 'Terrain and clutter', population: 'Population · GHSL 2025 · 100 m', user_context: 'Pre-event edge and low-latency users', road_context: 'Road context · optional current snapshot', other: 'Other' };
       const groups = new Map();
       for (const feature of featureOptions.value) {
-        if (!groups.has(feature.group)) groups.set(feature.group, { key: feature.group, label: labels[feature.group] || feature.group, features: [] });
-        groups.get(feature.group).features.push(feature);
+        const group = feature.key.startsWith('cluster_pre_') || ['avg_users', 'avg_traffic_dl_gb', 'avg_prb_util_pct', 'avg_cqi'].includes(feature.key) ? 'cluster_prelaunch' : feature.group;
+        if (!groups.has(group)) groups.set(group, { key: group, label: labels[group] || group, features: [] });
+        groups.get(group).features.push(feature);
       }
       return [...groups.values()];
     });
@@ -164,6 +171,7 @@ export default {
       selectedSite.value = null;
       results.value = null;
       featureOptions.value = [];
+      availabilityAsOf.value = null;
       selectedFeatures.value = [];
       featureError.value = '';
       availabilityRequest += 1;
@@ -185,6 +193,7 @@ export default {
 
     function selectSite(site) {
       selectedSite.value = site;
+      availabilityAsOf.value = null;
       selectedLabel = `${site.site_name} (${site.site_id})`;
       searchText.value = selectedLabel;
       suggestions.value = [];
@@ -203,7 +212,8 @@ export default {
         const response = await axios.get(`${API}/similarity/features/`, { params: { site_id: site.site_id } });
         if (requestId !== availabilityRequest || selectedSite.value?.site_id !== site.site_id) return;
         featureOptions.value = response.data.features || [];
-        selectedFeatures.value = featureOptions.value.filter(feature => feature.available && feature.default_selected !== false).map(feature => feature.key);
+        availabilityAsOf.value = response.data.as_of_date || null;
+        selectedFeatures.value = featureOptions.value.filter(feature => feature.available && feature.selectable !== false && feature.default_selected !== false).map(feature => feature.key);
       } catch (requestError) {
         if (requestId === availabilityRequest) {
           featureError.value = requestError.response?.data?.error || 'Could not load feature availability.';
@@ -213,7 +223,7 @@ export default {
       }
     }
     function selectAllAvailable() {
-      selectedFeatures.value = featureOptions.value.filter(feature => feature.available).map(feature => feature.key);
+      selectedFeatures.value = featureOptions.value.filter(feature => feature.available && feature.selectable !== false).map(feature => feature.key);
     }
     function clearFeatureSelection() { selectedFeatures.value = []; }
     function chooseFirst() { if (suggestions.value.length) selectSite(suggestions.value[0]); }
@@ -238,7 +248,7 @@ export default {
       return metric.unit ? `${number} ${metric.unit}` : number;
     }
     function eventLabel(value) {
-      return ({ NEW_SITE: 'New site', TECH_ADD: 'Technology addition', SECTOR_ADD: 'Sector addition', BASELINE: 'Baseline' })[value] || value || 'Unknown event';
+      return ({ SITE_ADDED: 'Site added', TECHNOLOGY_ADDED: 'Technology added', FREQUENCY_BAND_ADDED: 'Frequency band added', CELL_ADDED: 'Cell added', BANDWIDTH_UPGRADE: 'Bandwidth upgrade', BANDWIDTH_DOWNGRADE: 'Bandwidth downgrade', NEW_SITE: 'New site', TECH_ADD: 'Technology addition', SECTOR_ADD: 'Sector addition', BASELINE: 'Baseline' })[value] || value || 'Unknown event';
     }
     function isUnavailable(value) { return value === null || value === undefined || value === ''; }
     function featureStatus(key, item) {
@@ -254,14 +264,14 @@ export default {
     function displayFeature(value) {
       if (isUnavailable(value)) return 'Unavailable';
       if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-      return typeof value === 'number' ? value.toLocaleString(undefined, { maximumFractionDigits: 3 }) : String(value);
+      return typeof value === 'number' ? (value !== 0 && Math.abs(value) < 0.001 ? value.toExponential(3) : value.toLocaleString(undefined, { maximumFractionDigits: 3 })) : String(value);
     }
     function showOnMap() {
       if (!results.value || !selectedSite.value) return;
       emit('show-on-map', { querySiteId: selectedSite.value.site_id, siteIds: [...new Set([selectedSite.value.site_id, ...results.value.cases.map(item => item.site_id)])] });
     }
     onBeforeUnmount(() => { if (searchTimer) window.clearTimeout(searchTimer); });
-    return { weightingMode, searchText, suggestions, selectedSite, results, loading, error, searchError, availabilityLoading, featureOptions, selectedFeatures, featureError, featureGroups, featureRows, resultsStale, selectSite, chooseFirst, runSearch, selectAllAvailable, clearFeatureSelection, percent, formatMetric, eventLabel, isUnavailable, displayFeature, featureStatus, featureWeight, showOnMap };
+    return { weightingMode, availabilityAsOf, searchText, suggestions, selectedSite, results, loading, error, searchError, availabilityLoading, featureOptions, selectedFeatures, featureError, featureGroups, featureRows, resultsStale, selectSite, chooseFirst, runSearch, selectAllAvailable, clearFeatureSelection, percent, formatMetric, eventLabel, isUnavailable, displayFeature, featureStatus, featureWeight, showOnMap };
   },
 };
 </script>
@@ -300,6 +310,11 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .feature-choice > span { flex: 1; text-transform: capitalize; }
 .feature-choice-value { max-width: 80px; overflow: hidden; color: #64748b; text-overflow: ellipsis; white-space: nowrap; }
 .feature-choice-unavailable, .unavailable-label { color: #b91c1c !important; }
+.feature-description { min-width: 0; }
+.feature-reason, .feature-current-context { display: block; white-space: normal; text-transform: none; line-height: 1.45; margin-top: 4px; font-size: 10px; }
+.feature-reason { color: #64748b; }
+.feature-current-context { color: #334155; }
+.feature-profile-date { color: #334155; font-size: 12px; }
 .feature-choice input:disabled { cursor: not-allowed; }
 .selection-stale { margin: 10px 0; padding: 9px 11px; border-radius: 6px; background: #fff7ed; color: #9a3412; font-size: 11px; }
 .scope-note { margin: 14px 0; color: #64748b; font-size: 12px; line-height: 1.45; }

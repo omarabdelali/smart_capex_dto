@@ -28,6 +28,7 @@ from .anp import ANPComputer
 from .kpi import KPIFeatureExtractor
 from .context import cluster_feature_map, configuration_feature_values, prelaunch_maos_values
 from .road_features import RoadFeatureExtractor, save_site_roads
+from .maos_context import save_user_context
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,7 @@ class FeatureExtractionPipeline:
                 | Q(config_features__isnull=True)
                 | Q(cluster_features__isnull=True)
                 | Q(road_features__isnull=True)
+                | Q(user_context_features__isnull=True)
                 | (Q(is_launched=True) & Q(kpi_features__isnull=True))
             )
             logger.info(f"{sites.count()} sites need feature extraction (skipping {total_sites - sites.count()} with existing features)")
@@ -131,11 +133,9 @@ class FeatureExtractionPipeline:
         technology_by_site = {}
         for row in Cell.objects.values('site__site_id', 'technology').distinct():
             technology_by_site.setdefault(row['site__site_id'], set()).add(row['technology'])
-        antenna_by_site = {
-            row['site__site_id']: row['height']
-            for row in Cell.objects.values('site__site_id').annotate(height=Avg('antenna_height_m'))
-        }
-        
+        from .approved_context import static_inventory, absolute_antenna_elevation, terrain_relief
+        antenna_by_site = {row['site_id']:absolute_antenna_elevation(row) for row in static_inventory({})}
+
         # Initialize spatial and ANP extractors (need all sites data)
         spatial_extractor = SpatialFeatureExtractor(
             sites_data,
@@ -143,6 +143,7 @@ class FeatureExtractionPipeline:
             site_antenna_heights=antenna_by_site,
         )
         anp_computer = ANPComputer()
+        user_network_cache = {}
         cluster_features = cluster_feature_map(sites_data)
         
         # Track statistics
@@ -159,6 +160,7 @@ class FeatureExtractionPipeline:
             'cluster_failures': 0,
             'maos_features': 0,
             'road_computed': 0, 'road_null': 0, 'road_failures': 0,
+            'user_context_computed': 0,
         }
         
         # Process each site
@@ -200,6 +202,15 @@ class FeatureExtractionPipeline:
                         defaults=self.clutter_extractor.to_dict(clutter_result)
                     )
                     
+                    stored_clutter = self.clutter_extractor.to_dict(clutter_result)
+                    ground = getattr(geo_result,'elevation_m',None)
+                    building = stored_clutter.get('avg_building_height_m')
+                    GeometricFeatures.objects.filter(site=site).update(
+                        z_antenna_m=ground+building+configuration_values['antenna_height_m']
+                            if ground is not None and building is not None else None,
+                        terrain_relief_class=terrain_relief(getattr(geo_result,'slope_deg',None)),
+                    )
+
                     # 3. Spatial features (neighbor analysis)
                     spatial_result = spatial_extractor.extract_features(site.site_id)
                     if not spatial_result.success:
@@ -244,6 +255,8 @@ class FeatureExtractionPipeline:
                         defaults={'cluster_id': site.cluster_id, **cluster_features[site.site_id]},
                     )
                     
+                    save_user_context(site,user_network_cache)
+                    stats['user_context_computed'] += 1
                     stats['successful'] += 1
                     stats['road_null' if road_values['road_km_total'] is None else 'road_computed'] += 1
                     logger.info(f"✓ Site {site.site_id} features extracted successfully")

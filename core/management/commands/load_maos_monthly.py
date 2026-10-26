@@ -3,6 +3,7 @@
 from django.core.management.base import BaseCommand, CommandError
 
 from services.models.preprocessing.maos_report_loader import MAOSReportLoader
+import json
 
 
 class Command(BaseCommand):
@@ -10,11 +11,16 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--csv', help='Monthly MAOS CSV path; discovers the project export by default')
+        parser.add_argument('--user-counters-only',action='store_true')
 
     def handle(self, *args, **options):
         try:
             csv_path = options['csv'] or MAOSReportLoader.discover_monthly_csv()
-            stats = MAOSReportLoader(str(csv_path)).import_to_database()
+            loader = MAOSReportLoader(str(csv_path))
+            if options['user_counters_only']:
+                self.stdout.write(json.dumps(loader.import_user_counters(),indent=2))
+                return
+            stats = loader.import_to_database()
         except Exception as exc:
             raise CommandError(f'MAOS monthly import failed: {exc}') from exc
 

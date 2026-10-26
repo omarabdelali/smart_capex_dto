@@ -1,0 +1,11 @@
+{
+  "static_geographic_context": true,
+  "static_population_context": true,
+  "default_antenna_height_m": 25.0,
+  "terrain_relief_thresholds_deg": [2.0, 5.0, 15.0],
+  "terrain_relief_classes": ["flat", "rolling", "hilly", "steep"],
+  "terrain_relief_calibration": "prior, uncalibrated",
+  "cluster_prelaunch_window": "previous_calendar_month",
+  "sector_azimuth_tolerance_deg": 5.0,
+  "neighbor_radius_m": 2000
+}

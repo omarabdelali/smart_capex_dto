@@ -18,7 +18,7 @@ def rank_similar_cases(query, candidates, k=10, min_pool_size=3, selected_featur
 
     hierarchical = HierarchicalFilter(min_pool_size=min_pool_size)
     indices, level = hierarchical.filter_cases(query, candidates, return_filter_level=True)
-    requested = list(dict.fromkeys(selected_features if selected_features is not None else [f for f in all_features if f not in ROAD_FIELDS]))
+    requested = [f for f in dict.fromkeys(selected_features if selected_features is not None else [f for f in all_features if f not in ROAD_FIELDS]) if f not in ('site_id','cluster_id','cluster_avg_users')]
     excluded = {}
     query_available = []
     for feature in requested:

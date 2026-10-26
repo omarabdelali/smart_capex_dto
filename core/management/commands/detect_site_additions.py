@@ -6,16 +6,20 @@ from services.models.preprocessing.maos_launch_detector import MAOSLaunchDetecto
 
 
 class Command(BaseCommand):
-    help = 'Detect additions at the first post-baseline MAOS month with all-zero KPIs'
+    help = 'Detect hierarchical radio events at strictly positive traffic activation months'
+
+    def add_arguments(self, parser):
+        parser.add_argument('--dry-run', action='store_true')
+        parser.add_argument('--refresh-configuration', action='store_true')
 
     def handle(self, *args, **options):
+        import json
+        from services.models.preprocessing.network_events import detect_events
         try:
-            stats = MAOSLaunchDetector().detect_and_save()
+            stats = detect_events()[3] if options['dry_run'] else MAOSLaunchDetector().detect_and_save()
+            if options['refresh_configuration'] and not options['dry_run']:
+                from services.models.preprocessing.network_events import refresh_event_configuration
+                stats['configuration_rows_refreshed'] = refresh_event_configuration()
         except Exception as exc:
-            raise CommandError(f'Cell addition detection failed: {exc}') from exc
-
-        self.stdout.write(f"Cells evaluated: {stats['cells_evaluated']:,}")
-        self.stdout.write(self.style.SUCCESS(f"Added cells detected: {stats['detected_cells']:,}"))
-        self.stdout.write(self.style.SUCCESS(f"Sites with detected technology events: {stats['detected_sites']:,}"))
-        self.stdout.write(f"Site/technology events: {stats['detected_site_technologies']:,}")
-        self.stdout.write(f"MAOS history starts: {stats['data_start']}")
+            raise CommandError(f'Radio event detection failed: {exc}') from exc
+        self.stdout.write(json.dumps(stats, indent=2, default=str))

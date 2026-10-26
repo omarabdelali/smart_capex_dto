@@ -14,9 +14,11 @@ from .features import (
     ClusterFeatures,
     KPIFeatures,
     RoadFeatures,
+    UserContextFeatures,
 )
 from .kpi import PreLaunchKPI, MAOSMonthlyKPI
 from .feature_sync import FeatureSyncJob
+from .network_event import RadioNetworkEvent
 
 __all__ = [
     'Site',
@@ -29,7 +31,9 @@ __all__ = [
     'ClusterFeatures',
     'KPIFeatures',
     'RoadFeatures',
+    'UserContextFeatures',
     'PreLaunchKPI',
     'MAOSMonthlyKPI',
     'FeatureSyncJob',
+    'RadioNetworkEvent',
 ]

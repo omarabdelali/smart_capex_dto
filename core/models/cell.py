@@ -36,6 +36,8 @@ class Cell(models.Model):
     # Launch status (from KPI-based detection)
     is_launched = models.BooleanField(default=False)
     launch_date = models.DateField(null=True, blank=True)
+    effective_activation_month = models.DateField(null=True, blank=True)
+    activation_evidence = models.CharField(max_length=32, default='no_positive_traffic')
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

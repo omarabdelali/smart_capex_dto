@@ -37,7 +37,7 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
         - out_of_bounds: Filter out-of-bounds sites (true/false)
         - technology: Filter by cell technology (2G, 3G, 4G)
         """
-        queryset = Site.objects.all().prefetch_related('cells')
+        queryset = Site.objects.all().prefetch_related('cells', 'network_events')
 
         site_ids = self.request.query_params.get('site_ids', '').strip()
         if site_ids:
@@ -198,61 +198,11 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
             users=Avg('cluster_avg_users'),
             centroid_distance=Avg('dist_to_cluster_centroid_m'),
         )
-        cells = Cell.objects.filter(site__cluster_id=cluster_id, is_launched=True).select_related('site').order_by(
-            'launch_date', 'site__site_name', 'cell_name'
-        )
-        event_type_by_technology = {'4G': 'LTE_ADDED', '3G': '3G_ADDED', '2G': '2G_ADDED'}
-        events = []
-        for cell in cells:
-            event_date = cell.site.launch_date if cell.site.is_launched and cell.site.launch_date else cell.launch_date
-            if event_date is None:
-                continue
-            events.append({
-                'event_date': event_date.isoformat(),
-                'event_type': 'SITE_ADDED' if cell.site.is_launched else event_type_by_technology.get(cell.technology, 'CELL_ADDED'),
-                'site_id': cell.site.site_id,
-                'site_name': cell.site.site_name,
-                'cell_id': cell.cell_id,
-                'cell_name': cell.cell_name,
-                'technology': cell.technology,
-            })
+        from services.models.preprocessing.network_events import cluster_events
+        events = cluster_events(cluster_id)
 
-        monthly_rows = MAOSMonthlyKPI.objects.filter(cell__site__cluster_id=cluster_id).values(
-            'month_date'
-        ).annotate(
-            traffic_bits=Sum('thrp_bits_dl'),
-            dl_bits=Sum('thrp_bits_dl', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl_last_tti__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
-            dl_last_tti_bits=Sum('thrp_bits_dl_last_tti', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
-            dl_time_ms=Sum('thrp_time_dl_ms', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl_last_tti__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
-            prb_used=Sum('prb_dl_used_avg', filter=Q(prb_dl_used_avg__isnull=False, prb_dl_available__gt=0)),
-            prb_available=Sum('prb_dl_available', filter=Q(prb_dl_used_avg__isnull=False, prb_dl_available__gt=0)),
-            delay_time_ms=Sum('dl_packet_delay_time_ms', filter=Q(dl_packet_delay_time_ms__isnull=False, dl_packet_delay_packets__gt=0)),
-            delay_packets=Sum('dl_packet_delay_packets', filter=Q(dl_packet_delay_time_ms__isnull=False, dl_packet_delay_packets__gt=0)),
-            unavailable_s=Sum('cell_unavail_duration_s', filter=Q(cell_unavail_duration_s__isnull=False, observation_duration_s__gt=0)),
-            observation_s=Sum('observation_duration_s', filter=Q(cell_unavail_duration_s__isnull=False, observation_duration_s__gt=0)),
-            cqi_weighted_total=Sum('cqi_weighted_sum', filter=Q(cqi_weighted_sum__isnull=False, cqi_sample_count__gt=0)),
-            cqi_sample_count=Sum('cqi_sample_count', filter=Q(cqi_weighted_sum__isnull=False, cqi_sample_count__gt=0)),
-            active_users=Sum('active_users_avg'),
-            traffic_users=Sum('traffic_user_avg'),
-            reporting_cells=Count('cell_id', distinct=True),
-            reporting_sites=Count('cell__site_id', distinct=True),
-        ).order_by('month_date')
-        monthly_kpis = []
-        for row in monthly_rows:
-            metrics = normalize_monthly_totals(row)
-            monthly_kpis.append({
-                'month': row['month_date'].isoformat(),
-                'downlink_traffic_gb': metrics['thrp_dl_gb'],
-                'active_users_sum': metrics['active_users_avg'],
-                'traffic_users_sum': metrics['traffic_user_avg'],
-                'downlink_prb_avg_pct': metrics['prb_util_dl_pct'],
-                'cqi_avg': metrics['cqi_avg'],
-                'dl_throughput_kbps': metrics['dl_throughput_kbps'],
-                'dl_packet_delay_ms': metrics['dl_packet_delay_ms'],
-                'cell_availability_pct': metrics['cell_availability_pct'],
-                'reporting_cells': row['reporting_cells'],
-                'reporting_sites': row['reporting_sites'],
-            })
+        from services.models.features.maos_context import cluster_monthly_series
+        monthly_kpis = cluster_monthly_series(cluster_id)
         event_counts = {}
         for event in events:
             event_counts[event['event_type']] = event_counts.get(event['event_type'], 0) + 1
@@ -328,7 +278,7 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
                 'kpi_features',
                 'config_features',
                 'cluster_features'
-            ).prefetch_related('cells').get(site_id=site_id)
+            ).prefetch_related('cells', 'network_events').get(site_id=site_id)
         except Site.DoesNotExist:
             return Response(
                 {'error': f'Site {site_id} not found'},

@@ -11,6 +11,25 @@ from .cell import Cell
 # Check if we're using spatial backend (imported from site.py through BaseModel)
 
 
+class UserContextFeatures(BaseModel):
+    site = models.OneToOneField(Site, on_delete=models.CASCADE, related_name='user_context_features')
+    tier1_edge_user_share = models.FloatField(null=True, blank=True)
+    tier2_edge_user_share = models.FloatField(null=True, blank=True)
+    cluster_edge_user_share = models.FloatField(null=True, blank=True)
+    tier1_edge_user_peak_ratio = models.FloatField(null=True, blank=True)
+    tier2_edge_user_peak_ratio = models.FloatField(null=True, blank=True)
+    cluster_edge_user_peak_ratio = models.FloatField(null=True, blank=True)
+    tier1_lowlatency_user_share = models.FloatField(null=True, blank=True)
+    tier2_lowlatency_user_share = models.FloatField(null=True, blank=True)
+    cluster_lowlatency_user_share = models.FloatField(null=True, blank=True)
+    profile_as_of_date = models.DateField()
+    support = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'user_context_features'
+
+
 class RoadFeatures(BaseModel):
     site = models.OneToOneField(Site, on_delete=models.CASCADE, related_name='road_features')
     road_km_total = models.FloatField(null=True, blank=True)
@@ -40,6 +59,12 @@ class ConfigurationFeatures(BaseModel):
     Represents site configuration at launch time.
     """
     EVENT_TYPE_CHOICES = [
+        ('SITE_ADDED', 'Site Added'),
+        ('TECHNOLOGY_ADDED', 'Technology Added'),
+        ('FREQUENCY_BAND_ADDED', 'Frequency Band Added'),
+        ('CELL_ADDED', 'Cell Added'),
+        ('BANDWIDTH_UPGRADE', 'Bandwidth Upgrade'),
+        ('BANDWIDTH_DOWNGRADE', 'Bandwidth Downgrade'),
         ('BASELINE', 'Existing Site Baseline'),
         ('NEW_SITE', 'New Site'),
         ('TECH_ADD', 'Technology Addition'),
@@ -52,7 +77,7 @@ class ConfigurationFeatures(BaseModel):
     site = models.OneToOneField(Site, on_delete=models.CASCADE, related_name='config_features')
     
     # 3.1 event_type
-    event_type = models.CharField(max_length=20, choices=EVENT_TYPE_CHOICES)
+    event_type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES)
     
     # 3.2 tech_added
     tech_added = models.CharField(max_length=2, blank=True, choices=Cell.TECHNOLOGY_CHOICES)
@@ -71,16 +96,17 @@ class ConfigurationFeatures(BaseModel):
     bands_added = models.CharField(max_length=200, blank=True)
     
     # 3.6 sector_count_after
-    sector_count_after = models.IntegerField(default=0)
+    sector_count_after = models.IntegerField(default=0, null=True, blank=True)
     
     # 3.7 cells_per_sector_after
-    cells_per_sector_after = models.FloatField(default=0)
+    cells_per_sector_after = models.FloatField(default=0, null=True, blank=True)
     
     # 3.8 antenna_height_m (average across sectors)
-    antenna_height_m = models.FloatField(default=0)
+    antenna_height_m = models.FloatField(default=0, null=True, blank=True)
     
     # 3.9 total_bw_after_mhz
-    total_bw_after_mhz = models.FloatField(default=0)
+    total_bw_after_mhz = models.FloatField(default=0, null=True, blank=True)
+    total_prb_available = models.FloatField(null=True, blank=True, help_text='Sum of LTE cell available PRBs; not Mbps')
     
     # 3.10 total_capacity_after_mbps
     total_capacity_after_mbps = models.FloatField(default=0)
@@ -100,9 +126,10 @@ class GeometricFeatures(BaseModel):
     DEM-derived terrain characteristics.
     """
     site = models.OneToOneField(Site, on_delete=models.CASCADE, related_name='geometric_features')
+    terrain_relief_class = models.CharField(max_length=20, null=True, blank=True)
     
     # 4.1 z_antenna_m (DEM elevation + antenna height)
-    z_antenna_m = models.FloatField(help_text="Antenna elevation above sea level (30-200m)")
+    z_antenna_m = models.FloatField(null=True, blank=True, help_text="DEM ground + stored building estimate + antenna height, m")
     
     # 4.2 terrain_slope_deg
     terrain_slope_deg = models.FloatField(help_text="Median terrain slope in 200m buffer (0-25°)")
@@ -187,7 +214,7 @@ class SpatialFeatures(BaseModel):
     n_4g_sites_2km = models.IntegerField(default=0, help_text="4G sites within 2km")
     
     # 6.8 neighbor_avg_antenna_height_m
-    neighbor_avg_antenna_height_m = models.FloatField(default=0, help_text="Mean antenna height of neighbors (10-55m)")
+    neighbor_avg_antenna_height_m = models.FloatField(default=0, null=True, blank=True, help_text="Mean neighbor absolute antenna elevation within 2 km, m")
     
     created_at = models.DateTimeField(auto_now_add=True)
     

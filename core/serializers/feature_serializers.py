@@ -17,6 +17,14 @@ from core.models import (
 )
 from services.models.preprocessing.maos_aggregation import normalize_monthly_totals
 from core.models import RoadFeatures
+from core.models import UserContextFeatures
+from services.models.features.maos_context import site_maos_payload
+
+
+class UserContextFeaturesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserContextFeatures
+        exclude = ('id','site')
 
 
 class RoadFeaturesSerializer(serializers.ModelSerializer):
@@ -34,7 +42,7 @@ class GeometricFeaturesSerializer(serializers.ModelSerializer):
             'z_antenna_m',
             'terrain_slope_deg',
             'terrain_aspect_deg',
-            'terrain_roughness_m'
+            'terrain_roughness_m', 'terrain_relief_class'
         ]
 
 
@@ -121,7 +129,7 @@ class KPIFeaturesSerializer(serializers.ModelSerializer):
 class ConfigurationFeaturesSerializer(serializers.ModelSerializer):
     class Meta:
         model = ConfigurationFeatures
-        exclude = ('id', 'site', 'created_at')
+        exclude = ('id', 'site', 'created_at', 'total_capacity_after_mbps')
 
 
 class ClusterFeaturesSerializer(serializers.ModelSerializer):
@@ -145,8 +153,12 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
     kpi = serializers.SerializerMethodField()
     maos_monthly = serializers.SerializerMethodField()
     maos_cells = serializers.SerializerMethodField()
+    maos_scopes = serializers.SerializerMethodField()
+    user_context = UserContextFeaturesSerializer(source='user_context_features',read_only=True)
     configuration = serializers.SerializerMethodField()
     cluster_features = serializers.SerializerMethodField()
+    cluster_prelaunch = serializers.SerializerMethodField()
+    configuration_support = serializers.SerializerMethodField()
     population = serializers.SerializerMethodField()
     roads = RoadFeaturesSerializer(source='road_features', read_only=True)
     
@@ -156,6 +168,7 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
     added_cells = serializers.SerializerMethodField()
     cell_plan = serializers.SerializerMethodField()
     addition_events = serializers.SerializerMethodField()
+    network_events = serializers.SerializerMethodField()
     matched_cells = serializers.SerializerMethodField()
     is_launched = serializers.SerializerMethodField()
     launch_date = serializers.SerializerMethodField()
@@ -178,6 +191,7 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
             'added_cells',
             'cell_plan',
             'addition_events',
+            'network_events',
             'matched_cells',
             'geometric',
             'clutter',
@@ -186,8 +200,12 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
             'kpi',
             'maos_monthly',
             'maos_cells',
+            'maos_scopes',
+            'user_context',
             'configuration',
             'cluster_features',
+            'cluster_prelaunch',
+            'configuration_support',
             'population',
             'roads',
         ]
@@ -224,12 +242,19 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
                 'bandwidth_mhz': cell.bandwidth_mhz,
                 'azimuth_deg': cell.azimuth,
                 'antenna_height_m': cell.antenna_height_m,
+                'cluster_id': obj.cluster_id,
                 'is_added': cell.cell_id in additions,
                 'event_type': additions.get(cell.cell_id, {}).get('event_type'),
                 'launch_date': additions.get(cell.cell_id, {}).get('launch_date'),
+                'effective_activation_month': cell.effective_activation_month,
+                'activation_evidence': cell.activation_evidence,
+                'group_effective_date': additions.get(cell.cell_id, {}).get('group_effective_date'),
             }
             for cell in obj.cells.all()
         ]
+
+    def get_network_events(self, obj):
+        return get_site_addition_data(obj)['network_events']
 
     def get_addition_events(self, obj):
         return get_site_addition_data(obj)['events']
@@ -259,65 +284,13 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
             return None
 
     def get_maos_monthly(self, obj):
-        """Aggregate imported cell counters into a site-level monthly series."""
-        from core.models import MAOSMonthlyKPI
-        rows = MAOSMonthlyKPI.objects.filter(cell__site=obj).values('month_date').annotate(
-            traffic_users=Sum('traffic_user_avg'), active_users=Sum('active_users_avg'),
-            traffic_bits=Sum('thrp_bits_dl'),
-            dl_bits=Sum('thrp_bits_dl', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl_last_tti__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
-            dl_last_tti_bits=Sum('thrp_bits_dl_last_tti', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
-            dl_time_ms=Sum('thrp_time_dl_ms', filter=Q(thrp_time_dl_ms__isnull=False, thrp_bits_dl_last_tti__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'))),
-            prb_used=Sum('prb_dl_used_avg', filter=Q(prb_dl_used_avg__isnull=False, prb_dl_available__gt=0)),
-            prb_available=Sum('prb_dl_available', filter=Q(prb_dl_used_avg__isnull=False, prb_dl_available__gt=0)),
-            delay_time_ms=Sum('dl_packet_delay_time_ms', filter=Q(dl_packet_delay_time_ms__isnull=False, dl_packet_delay_packets__gt=0)),
-            delay_packets=Sum('dl_packet_delay_packets', filter=Q(dl_packet_delay_time_ms__isnull=False, dl_packet_delay_packets__gt=0)),
-            unavailable_s=Sum('cell_unavail_duration_s', filter=Q(cell_unavail_duration_s__isnull=False, observation_duration_s__gt=0)),
-            observation_s=Sum('observation_duration_s', filter=Q(cell_unavail_duration_s__isnull=False, observation_duration_s__gt=0)),
-            cqi_weighted_total=Sum('cqi_weighted_sum', filter=Q(cqi_weighted_sum__isnull=False, cqi_sample_count__gt=0)),
-            cqi_sample_count=Sum('cqi_sample_count', filter=Q(cqi_weighted_sum__isnull=False, cqi_sample_count__gt=0)),
-            reporting_cells=Count('cell_id', distinct=True),
-        ).order_by('month_date')
-        return [
-            {'month': row['month_date'].strftime('%Y-%m'), **normalize_monthly_totals(row)}
-            for row in rows
-        ]
+        return site_maos_payload(obj, get_site_addition_data(obj)['added_cells'])['scopes']['site']['records']
 
     def get_maos_cells(self, obj):
-        """Return monthly KPI series per cell so added sectors can be inspected."""
-        from core.models import MAOSMonthlyKPI
-        added_by_name = {item['cell_name']: item for item in get_site_addition_data(obj)['added_cells']}
-        rows = MAOSMonthlyKPI.objects.filter(cell__site=obj).values(
-            'cell__cell_name', 'cell__technology', 'month_date', 'traffic_user_avg',
-            'active_users_avg', 'prb_util_dl_pct', 'prb_util_ul_pct', 'rrc_conn_avg',
-            'cqi_avg', 'rsrp_avg_dbm', 'thrp_bits_dl', 'thrp_bits_ul', 'dl_throughput_kbps',
-            'dl_packet_delay_ms', 'cell_availability_pct',
-        ).order_by('cell__cell_name', 'month_date')
-        series = {}
-        for row in rows.iterator(chunk_size=2_000):
-            name = row['cell__cell_name']
-            entry = series.setdefault(name, {
-                'cell_name': name,
-                'technology': row['cell__technology'],
-                'is_added': name in added_by_name,
-                'launch_date': added_by_name.get(name, {}).get('launch_date'),
-                'records': [],
-            })
-            entry['records'].append({
-                'month': row['month_date'].strftime('%Y-%m'),
-                'traffic_user_avg': row['traffic_user_avg'],
-                'active_users_avg': row['active_users_avg'],
-                'prb_util_dl_pct': row['prb_util_dl_pct'],
-                'prb_util_ul_pct': row['prb_util_ul_pct'],
-                'rrc_conn_avg': row['rrc_conn_avg'],
-                'cqi_avg': row['cqi_avg'],
-                'rsrp_avg_dbm': row['rsrp_avg_dbm'],
-                'thrp_dl_gb': row['thrp_bits_dl'] / 8_000_000_000 if row['thrp_bits_dl'] is not None else None,
-                'thrp_ul_gb': None,
-                'dl_throughput_kbps': row['dl_throughput_kbps'],
-                'dl_packet_delay_ms': row['dl_packet_delay_ms'],
-                'cell_availability_pct': row['cell_availability_pct'],
-            })
-        return list(series.values())
+        return site_maos_payload(obj, get_site_addition_data(obj)['added_cells'])['cells']
+
+    def get_maos_scopes(self, obj):
+        return site_maos_payload(obj, get_site_addition_data(obj)['added_cells'])['scopes']
 
     def get_configuration(self, obj):
         try:
@@ -326,7 +299,13 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
             return None
 
     def get_cluster_features(self, obj):
-        try:
-            return ClusterFeaturesSerializer(obj.cluster_features).data
-        except ClusterFeatures.DoesNotExist:
-            return None
+        from services.models.features.approved_context import popup_context
+        return popup_context(obj)['cluster_context']
+
+    def get_cluster_prelaunch(self, obj):
+        from services.models.features.approved_context import popup_context
+        return popup_context(obj)['cluster_prelaunch']
+
+    def get_configuration_support(self, obj):
+        from services.models.features.approved_context import popup_context
+        return popup_context(obj)['configuration_support']

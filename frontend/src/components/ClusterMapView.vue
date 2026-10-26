@@ -54,9 +54,11 @@
         </label>
         <div class="addition-legend">
           <span class="addition-legend-icon event-site">S</span><span>Site added</span>
-          <span class="addition-legend-icon event-lte">4G</span><span>LTE added</span>
-          <span class="addition-legend-icon event-3g">3G</span><span>3G added</span>
-          <span class="addition-legend-icon event-2g">2G</span><span>2G added</span>
+          <span class="addition-legend-icon event-lte">T</span><span>Technology added</span>
+          <span class="addition-legend-icon event-lte">F</span><span>Band added</span>
+          <span class="addition-legend-icon event-lte">C</span><span>Cell added</span>
+          <span class="addition-legend-icon event-lte">+</span><span>Bandwidth upgrade</span>
+          <span class="addition-legend-icon event-lte">-</span><span>Bandwidth downgrade</span>
         </div>
       </div>
 
@@ -65,9 +67,11 @@
         <select id="event-type-select" v-model="selectedEventType" @change="updateMap">
           <option value="ALL">All events</option>
           <option value="SITE_ADDED">Site added</option>
-          <option value="LTE_ADDED">LTE added</option>
-          <option value="3G_ADDED">3G added</option>
-          <option value="2G_ADDED">2G added</option>
+          <option value="TECHNOLOGY_ADDED">Technology added</option>
+          <option value="FREQUENCY_BAND_ADDED">Frequency band added</option>
+          <option value="CELL_ADDED">Cell added</option>
+          <option value="BANDWIDTH_UPGRADE">Bandwidth upgrade</option>
+          <option value="BANDWIDTH_DOWNGRADE">Bandwidth downgrade</option>
         </select>
       </div>
 
@@ -347,6 +351,10 @@ export default {
      * Check if site should be displayed based on filters
      */
     const shouldDisplaySite = (properties) => {
+      if (selectedEventType.value !== 'ALL' &&
+          !(properties.network_events || []).some(event => event.event_type === selectedEventType.value)) {
+        return false;
+      }
       if (searchQuery.value) return true;
 
       // Filter out-of-bounds sites
@@ -369,11 +377,6 @@ export default {
         }
       }
 
-      if (selectedEventType.value !== 'ALL' &&
-          !(properties.addition_events || []).some(event => event.event_type === selectedEventType.value)) {
-        return false;
-      }
-      
       return true;
     };
 
@@ -487,7 +490,9 @@ export default {
     /**
      * Update map with cluster data
      */
+    let mapRequest = 0;
     const updateMap = async () => {
+      const request = ++mapRequest;
       if (!map.value || !sitesLayer.value) {
         console.error('Map or sitesLayer not initialized');
         return;
@@ -500,6 +505,7 @@ export default {
 
       // Fetch new data
       const geojson = await fetchClusterData();
+      if (request !== mapRequest) return;
       if (!geojson || !geojson.features || geojson.features.length === 0) {
         console.warn('No features to display');
         if (searchQuery.value && !props.focusSites?.siteIds?.length) {
@@ -536,27 +542,34 @@ export default {
           // CRITICAL: Leaflet automatically converts GeoJSON [lon, lat] to L.LatLng [lat, lon]
           // The latlng parameter here is already in correct Leaflet format
           console.log(`Creating marker at ${latlng.lat}, ${latlng.lng} for site ${feature.properties.site_name}`);
-          if (feature.properties.added_cell_count > 0) {
-            const events = feature.properties.addition_events || [];
+          if ((feature.properties.network_events || []).length > 0) {
+            const events = feature.properties.network_events || [];
             const shownEvents = selectedEventType.value === 'ALL'
               ? events
               : events.filter(event => event.event_type === selectedEventType.value);
-            const icons = shownEvents.map(event => {
+            const eventTypes = [...new Set(shownEvents.map(event => event.event_type))];
+            const icons = eventTypes.map(eventType => {
               const details = {
                 SITE_ADDED: ['site', 'S'],
+                TECHNOLOGY_ADDED: ['lte', 'T'],
+                FREQUENCY_BAND_ADDED: ['lte', 'F'],
+                CELL_ADDED: ['lte', 'C'],
+                BANDWIDTH_UPGRADE: ['lte', '+'],
+                BANDWIDTH_DOWNGRADE: ['lte', '-'],
                 LTE_ADDED: ['lte', '4G'],
                 '3G_ADDED': ['3g', '3G'],
                 '2G_ADDED': ['2g', '2G']
-              }[event.event_type];
-              return details ? `<span class="site-addition-icon event-${details[0]}">${details[1]}</span>` : '';
+              }[eventType];
+              const count = shownEvents.filter(event => event.event_type === eventType).length;
+              return details ? `<span class="site-addition-icon event-${details[0]}" data-event-type="${eventType}" title="${eventType}: ${count} action(s)">${details[1]}</span>` : '';
             }).join('');
             return L.marker(latlng, {
-              title: `${feature.properties.site_name} · ${feature.properties.added_cell_count} added cell(s) · ${shownEvents.map(event => event.event_type.replace('_ADDED', ' added')).join(', ')}`,
+              title: `${feature.properties.site_name} · ${feature.properties.added_cell_count} added cell(s) · ${eventTypes.map(type => `${type}: ${shownEvents.filter(event => event.event_type === type).length} action(s)`).join(', ')}`,
               icon: L.divIcon({
                 className: 'site-addition-marker',
-                html: `<span class="site-addition-icons">${icons}</span>`,
-                iconSize: [Math.max(28, shownEvents.length * 27), 30],
-                iconAnchor: [Math.max(14, shownEvents.length * 27 / 2), 15]
+                html: `<span class="site-addition-icons" data-site-id="${encodeURIComponent(String(feature.properties.site_id))}">${icons}</span>`,
+                iconSize: [Math.max(28, eventTypes.length * 27), 30],
+                iconAnchor: [Math.max(14, eventTypes.length * 27 / 2), 15]
               })
             });
           }

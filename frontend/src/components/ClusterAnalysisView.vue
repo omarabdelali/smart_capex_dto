@@ -42,10 +42,10 @@
             </select>
           </label>
         </div>
-        <div v-if="analysis.monthly_kpis.length" class="chart-frame">
+        <div v-if="analysis.monthly_kpis.length && hasMetricData" class="chart-frame">
           <canvas ref="chartCanvas" role="img" :aria-label="`${activeMetric.label} by month with event markers`"></canvas>
         </div>
-        <p v-else class="empty-state">No linked MAOS history is available for this cluster.</p>
+        <p v-else class="empty-state">No available values for this KPI. Source counters may be missing or its denominator may be zero.</p>
         <div class="timeline-legend"><span class="event-line-key" aria-hidden="true"></span><span>Detected event month</span></div>
       </section>
 
@@ -53,7 +53,7 @@
         <div class="section-heading">
           <div>
             <h3 id="cluster-events-title">Events in this cluster</h3>
-            <p>All detected cell events are listed by date; events sharing a month share a chart marker.</p>
+            <p>Group additions are listed once at completion; bandwidth changes require positive traffic.</p>
           </div>
           <span class="event-total">{{ analysis.events.length }} events</span>
         </div>
@@ -63,12 +63,12 @@
               <tr><th>Date</th><th>Event</th><th>Site</th><th>Cell</th><th>Technology</th></tr>
             </thead>
             <tbody>
-              <tr v-for="event in analysis.events" :key="`${event.cell_id}-${event.event_date}`">
+              <tr v-for="event in analysis.events" :key="event.event_key">
                 <td>{{ event.event_date }}</td>
-                <td><span class="event-kind" :class="eventClass(event.event_type)">{{ eventLabel(event.event_type) }}</span></td>
+                <td><span class="event-kind" :class="eventClass(event.event_type)">{{ event.event_label || eventLabel(event.event_type) }}</span></td>
                 <td><strong>{{ event.site_name }}</strong><small>{{ event.site_id }}</small></td>
                 <td>{{ event.cell_name }}</td>
-                <td>{{ event.technology }}</td>
+                <td>{{ event.technology }}<small v-if="event.previous_bandwidth_mhz != null">{{ event.previous_bandwidth_mhz }} → {{ event.new_bandwidth_mhz }} MHz</small></td>
               </tr>
             </tbody>
           </table>
@@ -139,6 +139,9 @@ export default {
     let chart = null;
 
     const metrics = [
+      { key: 'edge_user_share', label: 'Edge user share (ratio)', color: '#7c3aed' },
+      { key: 'edge_user_peak_ratio', label: 'Edge user peak ratio (sum Max / sum Avg)', color: '#db2777' },
+      { key: 'lowlatency_user_share', label: 'Low-latency user share (ratio)', color: '#0891b2' },
       { key: 'downlink_traffic_gb', label: 'Downlink traffic (GB/month)', color: '#2563eb' },
       { key: 'active_users_sum', label: 'Sum of cell average active users', color: '#7c3aed' },
       { key: 'traffic_users_sum', label: 'Sum of average traffic users', color: '#0891b2' },
@@ -149,6 +152,7 @@ export default {
       { key: 'cell_availability_pct', label: 'Cell availability (%)', color: '#0f766e' }
     ];
     const activeMetric = computed(() => metrics.find(metric => metric.key === selectedMetric.value) || metrics[0]);
+    const hasMetricData = computed(() => analysis.value?.monthly_kpis?.some(row => row[activeMetric.value.key] != null));
 
     const loadAnalysis = async clusterId => {
       if (clusterId === null || clusterId === undefined) return;
@@ -187,7 +191,7 @@ export default {
             pointRadius: 2,
             tension: 0.2,
             fill: true,
-            spanGaps: true
+            spanGaps: false
           }]
         },
         plugins: [eventTimelinePlugin],
@@ -208,7 +212,7 @@ export default {
 
     const formatNumber = value => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
     const eventLabel = eventType => ({
-      SITE_ADDED: 'Site added', LTE_ADDED: 'LTE added', '3G_ADDED': '3G added', '2G_ADDED': '2G added'
+      SITE_ADDED: 'Site added', TECHNOLOGY_ADDED: 'Technology added', FREQUENCY_BAND_ADDED: 'Frequency band added', CELL_ADDED: 'Cell added', BANDWIDTH_UPGRADE: 'Bandwidth upgrade', BANDWIDTH_DOWNGRADE: 'Bandwidth downgrade', LTE_ADDED: 'LTE added', '3G_ADDED': '3G added', '2G_ADDED': '2G added'
     }[eventType] || eventType);
     const eventClass = eventType => eventType.toLowerCase().replace(/_/g, '-');
 
@@ -231,7 +235,7 @@ export default {
 
     return {
       clusters, selectedCluster, analysis, selectedMetric, chartCanvas, loading, error,
-      metrics, activeMetric, formatNumber, eventLabel, eventClass
+      metrics, activeMetric, hasMetricData, formatNumber, eventLabel, eventClass
     };
   }
 };

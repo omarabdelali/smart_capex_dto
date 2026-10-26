@@ -26,8 +26,8 @@
           <span class="badge" :class="positionBadgeClass">
             {{ positionLabel }}
           </span>
-          <span v-for="event in features.addition_events" :key="event.event_type" class="badge addition">
-            {{ eventLabel(event.event_type) }}
+          <span v-for="event in features.network_events" :key="event.event_key" class="badge addition">
+            {{ eventTitle(event) }}
           </span>
         </div>
       </div>
@@ -70,12 +70,24 @@
               <span class="value">{{ features.launch_date }}</span>
             </div>
           </div>
+          <section v-if="features.network_events?.length" class="added-cells radio-events">
+            <h4>Traffic-confirmed radio events</h4>
+            <p>Effective dates are monthly KPI observations. Configuration dates are unknown unless recorded separately.</p>
+            <ul>
+              <li v-for="event in features.network_events" :key="event.event_key">
+                <strong>{{ eventTitle(event) }} · effective {{ event.event_date }}</strong>
+                <span v-if="event.previous_bandwidth_mhz != null">{{ event.previous_bandwidth_mhz }} → {{ event.new_bandwidth_mhz }} MHz · PRB change observed {{ event.first_changed_prb_month }}</span>
+                <span v-for="(month, cellId) in event.cell_activation_months" :key="cellId">{{ cellId }} · first positive traffic {{ month }}</span>
+                <span>Configuration date: {{ event.configuration_date || 'Unknown' }}</span>
+              </li>
+            </ul>
+          </section>
           <section v-if="features.added_cells?.length" class="added-cells">
             <h4>Detected cell additions</h4>
             <ul>
               <li v-for="cell in features.added_cells" :key="cell.cell_name">
                 <strong>{{ cell.cell_name }} ({{ cell.technology }})</strong>
-                <span>{{ eventLabel(cell.event_type) }} · {{ cell.launch_date }}</span>
+                <span>Cell active {{ cell.launch_date }} · group complete {{ cell.group_effective_date }}</span>
               </li>
             </ul>
           </section>
@@ -92,7 +104,7 @@
                 <div class="cell-plan-heading">
                   <strong>{{ cell.cell_name }}</strong>
                   <span>{{ cell.technology }}</span>
-                  <span v-if="cell.is_added" class="cell-plan-status">{{ eventLabel(cell.event_type) }} · {{ cell.launch_date }}</span>
+                  <span v-if="cell.is_added" class="cell-plan-status">{{ eventLabel(cell.event_type) }} · active {{ cell.launch_date }}</span>
                 </div>
                 <div class="cell-plan-features">
                   <span>{{ cell.band }} · {{ cell.frequency_mhz }} MHz · {{ cell.bandwidth_mhz }} MHz BW</span>
@@ -139,10 +151,11 @@
             <small v-if="item.value == null">{{ item.quality?.status === 'outside_raster' ? 'Outside population raster coverage.' : 'Insufficient population data on land; no missing residents have been invented.' }}</small>
           </div>
           <p>Counts are calculated from covered population cells. Tier 2 excludes Tier 1. Water is identified using WorldCover; missing land is not filled. Density is mapped population divided by the full catchment area.</p>
-          <small>Current 2025 context; historical similarity excludes this population source before 2025.</small>
+          <small>GHSL 2025 context is assumed stable across event years under the approved static-population policy.</small>
         </div>
         <div v-if="activeTab === 'geometric'" class="tab-pane">
           <div v-if="features.geometric" class="feature-section">
+            <p class="cell-plan-note">Absolute antenna elevation = DEM ground + stored building-height estimate + antenna height (25 m fallback).</p>
             <div class="info-grid">
               <div class="info-item">
                 <span class="label">Antenna Elevation:</span>
@@ -159,6 +172,10 @@
               <div class="info-item">
                 <span class="label">Terrain Roughness:</span>
                 <span class="value">{{ features.geometric.terrain_roughness_m?.toFixed(2) || 'N/A' }} m</span>
+              </div>
+              <div class="info-item">
+                <span class="label">Terrain relief (DEM slope):</span>
+                <span class="value">{{ features.geometric.terrain_relief_class || 'Unavailable' }}</span>
               </div>
             </div>
           </div>
@@ -236,16 +253,28 @@
 
         <!-- KPI and configuration features -->
         <div v-if="activeTab === 'network'" class="tab-pane">
-          <h4>MAOS pre-launch KPIs</h4>
+          <section v-if="features.cluster_prelaunch" class="cluster-prelaunch-panel">
+            <h4>Cluster KPIs · month before event</h4>
+            <p class="cell-plan-note">{{ features.cluster_prelaunch.cluster_prelaunch_support.month }} · {{ features.cluster_prelaunch.cluster_prelaunch_support.reporting_sites }} / {{ features.cluster_prelaunch.cluster_prelaunch_support.member_sites }} reporting sites. Active users are summed across cells; ratios use summed components.</p>
+            <div class="info-grid">
+              <div v-for="metric in clusterBaselineMetrics" :key="metric.key" class="info-item">
+                <span class="label">{{ metric.label }}</span>
+                <span class="value">{{ formatValue(features.cluster_prelaunch[metric.key]) }} {{ metric.unit }}</span>
+              </div>
+            </div>
+          </section>
+          <h4>Legacy own-site KPI fields</h4>
           <div v-if="features.kpi" class="info-grid">
             <div v-for="(value, key) in features.kpi" :key="key" class="info-item">
               <span class="label">{{ formatLabel(key) }}:</span>
               <span class="value">{{ formatValue(value) }}</span>
             </div>
           </div>
-          <p v-else class="no-data">No extracted MAOS KPI features stored for this site</p>
+          <p v-else class="no-data">No eligible own-site pre-launch KPI record. Use the Tier 1 / Tier 2 / cluster context and monthly scope selector below.</p>
 
           <h4>Site configuration</h4>
+          <p v-if="features.configuration_support" class="cell-plan-note">{{ features.configuration_support.evidenced_cells }} KPI-confirmed cells / {{ features.configuration_support.plan_cells }} plan cells. Capacity is the sum of reported LTE PRBs. Missing 2G/3G evidence is not filled.</p>
+          <p v-if="features.configuration_support && Object.keys(features.configuration_support.unmapped_bandwidth_prbs || {}).length" class="cell-plan-note">Some PRB averages do not match 25/50/75/100 within ±5; total MHz bandwidth stays unknown under the strict mapping policy.</p>
           <div v-if="features.configuration" class="info-grid">
             <div v-for="(value, key) in features.configuration" :key="key" class="info-item">
               <span class="label">{{ formatLabel(key) }}:</span>
@@ -254,7 +283,7 @@
           </div>
           <p v-else class="no-data">No configuration features stored for this site</p>
 
-          <h4>Cluster context</h4>
+          <h4>Static cluster context · KPI month before event</h4>
           <div v-if="features.cluster_features" class="info-grid">
             <div v-for="(value, key) in features.cluster_features" :key="key" class="info-item">
               <span class="label">{{ formatLabel(key) }}:</span>
@@ -263,7 +292,14 @@
           </div>
           <p v-else class="no-data">No cluster feature values stored for this site</p>
 
-          <MAOSMonthlyChart :records="features.maos_monthly || []" :cell-records="features.maos_cells || []" />
+          <section v-if="features.user_context" class="user-context-panel">
+            <h4>Pre-event edge and low-latency users</h4>
+            <p>Three complete months before {{ features.user_context.profile_as_of_date }}. Ratios are sum over sum; unavailable means no paired data or a zero denominator. Pre-event membership is reconstructed from LTE activity and may differ from current map membership used in monthly charts.</p>
+            <div class="user-table-scroll"><table><thead><tr><th>Feature</th><th>Tier 1 (0-2 km)</th><th>Tier 2 (2-5 km)</th><th>Total cluster</th></tr></thead><tbody>
+              <tr v-for="metric in userRatioRows" :key="metric.key"><th>{{ metric.label }}</th><td v-for="scope in ['tier1','tier2','cluster']" :key="scope" :title="features.user_context.support?.[scope]?.ratios?.[metric.key]?.unavailable_reason || 'Calculated from paired source counters'">{{ formatUserRatio(features.user_context[scope + '_' + metric.key]) }}</td></tr>
+            </tbody></table></div>
+          </section>
+          <MAOSMonthlyChart :records="features.maos_monthly || []" :cell-records="features.maos_cells || []" :scopes="features.maos_scopes || {}" />
         </div>
         
         <!-- ANP Tab -->
@@ -328,6 +364,8 @@ export default {
       { id: 'anp', label: 'ANP' }
     ];
     
+    const formatUserRatio = value => value == null ? 'Unavailable' : Number(value).toLocaleString(undefined, { maximumSignificantDigits: 6 });
+    const userRatioRows = [{ key: 'edge_user_share', label: 'Edge user share' }, { key: 'edge_user_peak_ratio', label: 'Edge user peak ratio' }, { key: 'lowlatency_user_share', label: 'Low-latency user share' }];
     const roadRows = computed(() => [
       ['road_km_total', 'Total road length', 'km'], ['road_km_weighted', 'Weighted road length', 'km'],
       ['road_density_weighted_km_km2', 'Weighted road density', 'km/km²'], ['highway_km', 'Motorway + trunk length', 'km'],
@@ -391,13 +429,24 @@ export default {
       return 'Highly diverse land cover';
     });
 
-    const formatLabel = key => key.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+    const clusterBaselineMetrics = [
+      {key:'avg_users',label:'Cluster active users (sum)',unit:'users'},
+      {key:'avg_traffic_dl_gb',label:'Cluster DL traffic',unit:'GB/month'},
+      {key:'avg_prb_util_pct',label:'Cluster DL PRB utilization',unit:'%'},
+      {key:'avg_cqi',label:'Cluster weighted CQI',unit:''},
+      {key:'cluster_pre_dl_throughput_kbps',label:'Cluster DL throughput',unit:'kbit/s'},
+      {key:'cluster_pre_dl_packet_delay_ms',label:'Cluster latency',unit:'ms'},
+      {key:'cluster_pre_cell_availability_pct',label:'Cluster availability',unit:'%'}
+    ];
+    const formatLabel = key => ({ total_prb_available: 'Site LTE capacity (PRBs)', neighbor_avg_antenna_height_m: 'Mean neighbor absolute antenna elevation (m ASL)', terrain_relief_class: 'Terrain relief (DEM slope)', z_antenna_m: 'Absolute antenna elevation (m ASL)' }[key] || key.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()));
     const eventLabel = eventType => ({
-      SITE_ADDED: 'Site added',
+      SITE_ADDED: 'Site added', TECHNOLOGY_ADDED: 'Technology added', FREQUENCY_BAND_ADDED: 'Frequency band added', CELL_ADDED: 'Cell added', BANDWIDTH_UPGRADE: 'Bandwidth upgrade', BANDWIDTH_DOWNGRADE: 'Bandwidth downgrade',
       LTE_ADDED: 'LTE added',
       '3G_ADDED': '3G added',
       '2G_ADDED': '2G added'
     }[eventType] || eventType);
+    const eventTitle = event => event.event_type === 'TECHNOLOGY_ADDED'
+      ? `${event.technologies.join('/')} added` : eventLabel(event.event_type);
     const formatValue = value => {
       if (value === null || value === undefined || value === '') return 'N/A';
       if (typeof value === 'boolean') return value ? 'Yes' : 'No';
@@ -407,7 +456,9 @@ export default {
     /**
      * Fetch site features from API
      */
+    let featureRequest = 0;
     const fetchFeatures = async () => {
+      const request = ++featureRequest;
       loading.value = true;
       error.value = null;
       
@@ -415,12 +466,12 @@ export default {
         const response = await axios.get(`${props.apiBaseUrl}/sites/${props.siteId}/features/`, {
           params: props.searchQuery ? { search: props.searchQuery } : {}
         });
-        features.value = response.data;
+        if (request === featureRequest) features.value = response.data;
       } catch (err) {
         console.error('Error fetching site features:', err);
-        error.value = 'Failed to load site features';
+        if (request === featureRequest) error.value = 'Failed to load site features';
       } finally {
-        loading.value = false;
+        if (request === featureRequest) loading.value = false;
         props.layoutUpdate();
       }
     };
@@ -441,7 +492,7 @@ export default {
       activeTab,
       tabs,
       populationRows,
-      roadRows, roadClasses,
+      roadRows, roadClasses, userRatioRows, formatUserRatio,
       clusterLabel,
       clusterBadgeClass,
       positionLabel,
@@ -452,13 +503,15 @@ export default {
       entropyDescription,
       formatLabel,
       formatValue,
-      eventLabel
+      eventLabel, eventTitle, clusterBaselineMetrics
     };
   }
 };
 </script>
 
 <style scoped>
+.user-context-panel{margin:16px 0}.user-context-panel p{font-size:11px;color:#64748b;line-height:1.5}.user-table-scroll{overflow:auto}.user-context-panel table{font-size:11px;border-collapse:collapse;width:100%}.user-context-panel th,.user-context-panel td{padding:7px;text-align:left;border-bottom:1px solid #e2e8f0;white-space:nowrap}
+
 .road-bar { height: 6px; background: #6366f1; border-radius: 3px; margin-top: 4px; }
 .road-class { font-size: 12px; color: #475569; }
 .population-panel { display: grid; gap: 12px; }
@@ -512,11 +565,14 @@ export default {
 
 .site-badges {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
 }
 
 .badge {
+  flex: 0 0 auto;
+  white-space: nowrap;
   padding: 4px 10px;
   border-radius: 12px;
   font-size: 11px;
@@ -557,6 +613,9 @@ export default {
 .added-cells li { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: #1f2937; }
 .added-cells li strong { overflow-wrap: anywhere; }
 .added-cells li span { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.radio-events p { font-size: 12px; line-height: 1.5; margin-bottom: 10px; }
+.radio-events li { flex-direction: column; gap: 5px; border-top: 1px solid #a7f3d0; padding-top: 8px; }
+.radio-events li strong, .radio-events li span { overflow-wrap: anywhere; min-width: 0; }
 .cell-plan { margin-top: 14px; }
 .cell-plan h4 { margin-bottom: 4px; color: #374151; font-size: 13px; }
 .cell-plan-note { margin: 0 0 8px; color: #6b7280; font-size: 11px; }

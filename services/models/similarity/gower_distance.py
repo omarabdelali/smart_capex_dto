@@ -48,6 +48,7 @@ class GowerDistance:
         # Configuration (10 features)
         'sector_count_after', 'cells_per_sector_after', 'antenna_height_m',
         'total_bw_after_mhz', 'total_capacity_after_mbps',
+        'total_prb_available',
         
         # Geometric (4 features)
         'z_antenna_m', 'terrain_slope_deg', 'terrain_roughness_m', 'terrain_aspect_deg',
@@ -60,6 +61,9 @@ class GowerDistance:
         'n_2g_sites_2km', 'n_3g_sites_2km', 'n_4g_sites_2km', 'neighbor_avg_antenna_height_m',
         'population_density_1km_per_km2',
         'population_tier1', 'population_tier2',
+        'tier1_edge_user_share', 'tier2_edge_user_share', 'cluster_edge_user_share',
+        'tier1_edge_user_peak_ratio', 'tier2_edge_user_peak_ratio', 'cluster_edge_user_peak_ratio',
+        'tier1_lowlatency_user_share', 'tier2_lowlatency_user_share', 'cluster_lowlatency_user_share',
         'road_km_total', 'road_km_weighted', 'road_density_weighted_km_km2',
         'highway_km', 'highway_share', 'n_road_intersections',
         
@@ -80,6 +84,7 @@ class GowerDistance:
         'pre_prb_util_dl_pct', 'pre_cqi_avg', 'pre_dl_throughput_kbps',
         'pre_dl_packet_delay_ms', 'pre_cell_availability_pct',
         'pre_traffic_trend_3m_pct', 'pre_prb_trend_3m_pct',
+        'cluster_pre_dl_throughput_kbps','cluster_pre_dl_packet_delay_ms','cluster_pre_cell_availability_pct',
         
         # Cluster (6 features)
         'cluster_size', 'cluster_density_sites_per_km2', 'cluster_avg_traffic_gb',
@@ -87,6 +92,7 @@ class GowerDistance:
     ]
     
     CATEGORICAL_FEATURES = [
+        'terrain_relief_class',
         'dominant_road_class',
         # Configuration
         'event_type', 'tech_added', 'bands_added',
@@ -141,6 +147,7 @@ class GowerDistance:
         if feature_weights:
             supported_features.update(feature_weights)
         all_features = supported_features.intersection(x1).intersection(x2)
+        all_features -= {'site_id','cluster_id','cluster_avg_users'}
         
         for feature in all_features:
             if self._get_feature_group(feature) == 'road_context' and (not feature_weights or feature not in feature_weights):
@@ -281,11 +288,17 @@ class GowerDistance:
     
     def _get_feature_group(self, feature: str) -> str:
         """Map feature name to its group."""
+        if feature.startswith(('tier1_','tier2_','cluster_')) and feature.endswith(('edge_user_share','edge_user_peak_ratio','lowlatency_user_share')):
+            return 'user_context'
         if feature in {'road_km_total','road_km_weighted','road_density_weighted_km_km2',
                        'highway_km','highway_share','n_road_intersections','dominant_road_class'}:
             return 'road_context'
         if feature.startswith('population_'):
             return 'population'
+        if feature == 'total_prb_available':
+            return 'configuration'
+        if feature.startswith('cluster_pre_'):
+            return 'prelaunch'
         # Cluster summaries can contain KPI words (e.g. traffic/users), so
         # classify them before the general pre-launch KPI name matching.
         if 'cluster' in feature:

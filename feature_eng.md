@@ -6,21 +6,24 @@ This is the current reference for feature definitions, formulas, sources, consum
 
 ## 1. Current feature registry and processing
 
-The implemented Gower registry contains **80 scalar dimensions: 68 numeric and 12 categorical**. Earlier 55/56/60 counts described older logical feature designs; 70/71/73 were intermediate implementation counts and are no longer current.
+The implemented Gower registry contains **94 scalar dimensions: 81 numeric and 13 categorical**. Earlier 55/56/60 counts described older logical feature designs; 70/71/73/80 were intermediate implementation counts and are no longer current.
 
 | Family | Numeric | Categorical | Total | Production of values |
 |---|---:|---:|---:|---|
-| Configuration | 5 | 9 | 14 | Persisted current cell-plan summaries; unsupported historical values excluded |
-| Terrain | 4 | 0 | 4 | Persisted DEM extraction |
-| Clutter/buildings | 3 | 1 | 4 | Persisted WorldCover/OSM extraction; historical values excluded |
-| Spatial | 8 | 0 | 8 | Persisted current values for inspection; reconstructed for similarity |
-| Angular Neighborhood Profile (ANP) | 15 | 0 | 15 | Persisted current values; reconstructed for similarity |
-| Cluster context | 5 | 1 | 6 | Current table for inspection; reconstructed historical context, label excluded |
-| Legacy prelaunch KPI schema | 9 | 0 | 9 | Declared but excluded from vectors without verified measurement windows |
-| Report-backed LTE profile/trends | 10 | 0 | 10 | Computed on demand from complete pre-cutoff months |
-| Population | 3 | 0 | 3 | Computed on demand from local GHSL raster |
-| Road context | 6 | 1 | 7 | Persisted RoadFeatures; optional current-context retrieval |
-| **Total** | **68** | **12** | **80** | Declared dimensions, not a promise that all are populated |
+| Configuration | 6 | 9 | 15 | KPI-evidenced cells projected to plan; PRB capacity separate from legacy Mbps |
+| Terrain | 4 | 1 | 5 | Static DEM extraction and optional relief classification |
+| Clutter/buildings | 3 | 1 | 4 | Approved static land-cover/building estimates |
+| Spatial | 8 | 0 | 8 | Time-bounded activity counts plus static absolute neighbor elevation |
+| Angular Neighborhood Profile | 15 | 0 | 15 | Pre-cutoff evidenced site activity |
+| Cluster context | 5 | 1 | 6 | Static site membership; ID and user-sum alias are display-only |
+| Unsupported source KPI fields | 5 | 0 | 5 | UL, RSRP and hourly metrics stay unavailable |
+| Cluster previous-month KPI baseline | 7 | 0 | 7 | Raw sums/weighted component ratios in the preceding calendar month |
+| Site LTE profile/trends | 10 | 0 | 10 | Three complete pre-cutoff site months |
+| Scoped edge / low-latency users | 9 | 0 | 9 | Pre-event sum-over-sum T1/T2/cluster context |
+| Population | 3 | 0 | 3 | GHSL 2025 assumed static across event years |
+| Road context | 6 | 1 | 7 | Optional current-context retrieval |
+| **Total** | **81** | **13** | **94** | Declared fields; not all are weighted or populated |
+
 
 The family counts above describe the feature catalog. The ranker's current name-based group mapping can place some fields in different weighting groups; see the remaining audit findings.
 
@@ -28,7 +31,7 @@ Flow: source imports -> services/models/features/pipeline.py -> persisted featur
 
 Models contain schema, serializers expose stored fields, and calculation/orchestration belongs in services/. Roads are registered in the shared pipeline used by both Features only and Full sync. Population is computed on demand and needs no feature backfill.
 
-Usage below: similarity means a declared dimension, usable only when eligible, available and weighted. Historical exclusions take precedence over persisted values. Inspector values can describe today's inventory while historical vectors use reconstructed or unavailable values.
+Usage below: similarity means a declared dimension, usable only when eligible, available and weighted. Current policy: geography, stored building-height estimates and population are static by user instruction. Event performance timing stays strict; actual KPI outcomes after the event never fill earlier windows. Cluster IDs and the duplicate user-sum alias are display-only. Earlier dated audit notes describe superseded policies when they conflict with this policy.
 
 ## 2. Source inventory and provenance
 
@@ -52,36 +55,38 @@ Road source date comes from the existing ZIP's README, verified by matching the 
 - Archive/source URL: https://download.geofabrik.de/africa/tunisia-latest-free.gpkg.zip . Historic download date is not established.
 - Licence: ODbL 1.0; attribution: OpenStreetMap contributors and Geofabrik. Source manifest is stored alongside the normalized GeoPackage.
 
-## 3. Configuration: 14 dimensions
+## 3. Configuration: 15 dimensions
 
 Implementation: services/models/features/context.py::configuration_feature_values. Persisted in ConfigurationFeatures and displayed under KPIs & Config.
 
-Let C be current cells; A be cells flagged launched with dates; B be technologies with nonzero monthly activity before the selected event. These persisted formulas are current-inventory summaries. Historical vectors clear unsupported configuration fields, retaining NEW_SITE only when supported by that event date.
+Let C be current cells and B be technologies with strictly positive DL traffic before the primary event. Configuration summaries use current inventory; activation events use first-positive traffic months. Historical vectors retain confirmed event labels and traffic-evidenced technology states. Physical configuration now uses KPI-confirmed cells projected to the plan and PRB observations at/before the event month, per the approved policy.
 
 | Fields | Formula / source meaning |
 |---|---|
-| event_type | NEW_SITE if site launched; otherwise TECH_ADD if launched-cell technologies extend B; SECTOR_ADD if launched cells exist without a newly serving technology; else BASELINE |
-| tech_added | Single technology in technologies(A) minus B; blank if none/multiple or whole-site launch |
+| event_type | Primary persisted canonical event: SITE_ADDED, TECHNOLOGY_ADDED, FREQUENCY_BAND_ADDED, CELL_ADDED, BANDWIDTH_UPGRADE or BANDWIDTH_DOWNGRADE; BASELINE if none |
+| tech_added | Technology label(s) of the confirmed TECHNOLOGY_ADDED event; historical vectors join multiple labels with /. The legacy persisted two-character field remains blank for multiple technologies |
 | tech_before_2g, tech_before_3g, tech_before_4g | Vector aliases for persisted has_2g_before/has_3g_before/has_4g_before; membership in B |
 | tech_after_2g, tech_after_3g, tech_after_4g | Aliases for technology membership in current C |
-| bands_added | Blank: no reliable historical band delta available |
-| sector_count_after | Count distinct round(azimuth / 5) * 5 |
-| cells_per_sector_after | Number of cells / sector count; current extractor returns 0 with no sectors |
-| antenna_height_m | Arithmetic mean cell antenna height |
-| total_bw_after_mhz | Sum cell bandwidth across sectors/layers; a cell-resource measure, not unique spectrum |
-| total_capacity_after_mbps | Uncomputed placeholder 0 in storage; converted to unavailable in similarity |
+| bands_added | Historical event metadata supplies band labels for site, technology or frequency-band additions; these describe activated plan membership, not a dated configuration timestamp |
+| sector_count_after | Distinct 5-degree azimuth buckets modulo 360, from KPI-confirmed active/added cells joined to the actual plan, no later than the event month |
+| cells_per_sector_after | KPI-evidenced after-cell count / sector count; NULL without evidence |
+| antenna_height_m | Mean positive plan height for eligible cells; approved 25 m fallback if no real positive value |
+| total_bw_after_mhz | Sum LTE MHz mapped from latest PRB observations at/before event month: 25/50/75/100 -> 5/10/15/20, inclusive +/-5 tolerance. Any unknown/unmapped required cell keeps the total NULL |
+| total_prb_available | SUM of reported available LTE PRBs over the KPI-evidenced site cells; capacity in PRBs, never Mbps |
+| total_capacity_after_mbps | Retained legacy field; unavailable because PRBs are not Mbps. Hidden from the popup configuration; use total_prb_available |
 
 Limits: current cell configuration does not establish event-time configuration. Cell-weighted height overweights sectors with more layers. Absence of 2G/3G activity is not proof of absence. New cells do not prove a new physical sector. Azimuth rounding does not merge 0 and 360 degrees. These require correction in current persisted extraction; historical vectors do not reuse their unsupported values.
 
-## 4. Terrain: 4 dimensions
+## 4. Terrain: 5 dimensions
 
 Implementation: services/models/features/geometric.py and services/visualization/dem_processor.py. Source: DEM and current cell height. Persisted fields appear under Terrain and are declared in similarity.
 
 | Field | Implemented formula / support |
 |---|---|
-| z_antenna_m | DEM(site) + mean cell antenna height; unavailable in historical vectors |
+| z_antenna_m | DEM ground + stored building-height estimate + positive plan antenna height (25 m fallback); approved static context |
 | terrain_slope_deg | Median degrees(atan(sqrt((dx/sx)^2 + (dy/sy)^2))) in approximate 200 m window |
 | terrain_roughness_m | Standard deviation of valid elevation pixels in approximate 1 km window |
+| terrain_relief_class | Optional slope-derived prior: <2 flat, 2-<5 rolling, 5-<15 hilly, >=15 steep |
 | terrain_aspect_deg | Circular mean of (90 - degrees(atan2(dy,-dx))) mod 360, weighted by sqrt(dx^2+dy^2), in approximate 200 m window |
 
 sx/sy are metric pixel spacing for slope. Aspect currently uses unscaled pixel gradients. Windows are rectangles, not circles, and the same latitude-adjusted angular extent is used on both axes. Flat-terrain aspect is arbitrary. Terrain shape remains an explicit static assumption in historical reconstruction. Legacy failure paths can store zeros; they have not been fully converted to nullable quality-aware results.
@@ -97,7 +102,7 @@ Implementation: services/models/features/clutter.py. WorldCover is masked with a
 | pct_building_area_1km | 100 * summed clipped OSM footprint area / (pi * 1000^2), clamped to [0,100] |
 | avg_building_height_m | Class lookup: urban 18, suburban 8, rural 4, water/forest 0; not measured height |
 
-All four are available in the current inspector; historical vectors exclude them without event-time snapshots. Remaining issues: entropy name/radius mismatch, forest label includes crops/grass, missing cover can become rural/zero, missing building coverage can become zero, overlapping footprints are summed rather than unioned, and height is a synthetic proxy. Verify source CRS for the pre-reprojection footprint bounding-box filter.
+All four are eligible for historical use under the explicit static-context assumption. Remaining issues: entropy name/radius mismatch, forest label includes crops/grass, missing cover can become rural/zero, missing building coverage can become zero, overlapping footprints are summed rather than unioned, and height is a synthetic proxy. Verify source CRS for the pre-reprojection footprint bounding-box filter.
 
 ## 6. Spatial and ANP: 23 dimensions
 
@@ -112,7 +117,7 @@ Sources: site coordinates and pre-cutoff LTE activity for similarity; current in
 | n_sites_2km | Count distance <=2,000 m |
 | n_sites_3km | Count distance <=3,000 m |
 | n_2g_sites_2km, n_3g_sites_2km, n_4g_sites_2km | Technology-specific neighboring site counts; unsupported technologies remain unknown in reconstructed context |
-| neighbor_avg_antenna_height_m | Persisted mean of neighbor site heights; historical similarity value unavailable |
+| neighbor_avg_antenna_height_m | Mean supported absolute neighbor elevation within 2 km: DEM ground + stored building estimate + mast height. NULL with no supported neighbor; 25 m fallback applies only to mast height |
 
 Persisted spatial failure/singleton paths can still produce zero placeholders. Reconstructed context uses only the preceding three complete calendar months and leaves context unknown when there is insufficient activity evidence.
 
@@ -142,18 +147,18 @@ Remaining persisted-extractor issues: the old 0.045-degree prefilter can drop va
 
 ## 7. Cluster context: 6 dimensions
 
-| Field | Current persisted formula | Similarity reconstruction |
-|---|---|---|
-| cluster_id | Current DBSCAN label | NULL: labels are not comparable across snapshots |
-| cluster_size | Number of cluster sites; noise sites independent singletons | Rebuilt cluster size, including query location |
-| cluster_density_sites_per_km2 | Count / projected convex-hull area; degenerate hull buffered 100 m | Recomputed on evidenced sites and query location |
-| cluster_avg_traffic_gb | Latest-global-month average site traffic, with legacy missing-to-zero behavior | Mean available recipient traffic from the immediately preceding month; exclude intervention site and missing members |
-| cluster_avg_users | Latest-global-month average summed cell active users | Same pre-cutoff recipient rule, without imputing missing users |
-| dist_to_cluster_centroid_m | Projected distance to current point centroid | Rebuilt UTM geometry and centroid |
+| Field | Current similarity/popup definition |
+|---|---|
+| cluster_id | Inherit Site.cluster_id for all sectors/cells; -1 for noise. Display only, never weighted |
+| cluster_size | Number of sites with that static assigned cluster ID; a noise site is its own singleton |
+| cluster_density_sites_per_km2 | Static group count / UTM 32N convex-hull area; degenerate hull buffered 100 m |
+| cluster_avg_traffic_gb | Mean available site traffic in the cluster during the immediately preceding month |
+| cluster_avg_users | Compatibility display alias of the full cluster active-user sum avg_users; not weighted twice |
+| dist_to_cluster_centroid_m | UTM distance to the static member-point centroid |
 
-Implementation: features/context.py for stored values; similarity/historical.py for reconstruction. Rebuilt clusters use DBSCAN with 2 km radius and minimum three sites. Persisted geometry uses an equal-area projection; reconstruction uses UTM 32N. Hull density differs from map alpha-shape polygons. Summed cell user averages are load proxies, not unique subscribers.
+Static membership is shared by user-context ratios, prior-month cluster KPIs and CBR cluster scope. CBR recipients still require pre-cutoff activity/baseline support and exclude the intervention site. The old ClusterFeatures table has latest-month legacy KPI summaries; dynamic similarity/popup baselines override them per requested event cutoff. Summed cell averages are load proxies, not distinct subscribers.
 
-## 8. KPI schemas and active LTE profile: 19 declared dimensions
+## 8. KPI schemas and user context: 31 declared dimensions
 
 ### Active LTE profile: 10 dimensions
 
@@ -180,9 +185,41 @@ Limits: summed user averages are not unique users; trend is not normalized for e
 
 Declared fields: avg_traffic_dl_gb, avg_traffic_ul_gb, avg_users, avg_prb_util_pct, peak_hour_traffic_gb, peak_hour_users, avg_cqi, avg_rsrp_dbm, congestion_hours_per_day.
 
-The current vector clears all nine because their measurement windows are unverified. The original audit found no populated PreLaunchKPI rows or active service producer. Busy-hour metrics, congestion hours and equivalent RSRP cannot be recovered from the monthly report alone.
+Four former legacy keys are now calculated from the immediately preceding cluster month: avg_traffic_dl_gb, avg_users (sum), avg_prb_util_pct and avg_cqi. Three additional cluster fields supply weighted throughput, latency and availability. The remaining five legacy dimensions stay NULL without UL/RSRP/hourly source counters. These values are calculated per cutoff by approved_context.py rather than read from undated PreLaunchKPI rows.
 
 A separate KPIFeatures table is populated/displayed by the legacy pipeline but is not the nine-field similarity schema. Its default path calculates last-prelaunch-month average cell PRB/RRC, traffic per day, and average calendar-time traffic rate (stored as avg_throughput_pre, which is not user throughput). Coverage/gap/segmented-demand fields are not calculated by that path and can retain legacy defaults. Consolidate these schemas rather than treating default zeros as measurements.
+
+### Scoped edge and low-latency users: 9 persisted dimensions (2026-10-26)
+
+Implementation: services/models/features/maos_context.py and preprocessing/maos_aggregation.py. Raw source columns are persisted in MAOSMonthlyKPI; UserContextFeatures stores nine ratios, profile_as_of_date, paired-counter support and updated_at. Additive migration 0008_user_context_counters adds the raw fields and profile table. The requested eedge_user_share uses canonical name edge_user_share.
+
+| Ratio | Numerator | Denominator | Scalar similarity fields |
+|---|---|---|---|
+| edge_user_share | L.Traffic.User.BorderUE.Avg | L.Traffic.User.Avg | tier1_edge_user_share, tier2_edge_user_share, cluster_edge_user_share |
+| edge_user_peak_ratio | L.Traffic.User.BorderUE.Max | L.Traffic.User.BorderUE.Avg | tier1_edge_user_peak_ratio, tier2_edge_user_peak_ratio, cluster_edge_user_peak_ratio |
+| lowlatency_user_share | L.Traffic.User.LowLatency.Avg | L.Traffic.User.Avg | tier1_lowlatency_user_share, tier2_lowlatency_user_share, cluster_lowlatency_user_share |
+
+For each scope, ratio = sum(numerator) / sum(denominator), using only rows where both source components are present and nonnegative. Missing pairs are omitted from both sums. The summed denominator must be positive: zero numerator with positive denominator gives real zero; no pairs or zero denominator gives NULL. Do not average per-cell ratios. These are dimensionless ratios, not values multiplied by 100. Sum of cell maxima is not a concurrent network peak or unique subscriber count.
+
+Monthly charts aggregate the paired raw components across cells/sites within each month. Pre-event features pool the components across the three complete calendar months before cutoff, then divide once; they do not take a median or mean of monthly ratios. T1 is distance <=2 km; T2 is 2<distance<=5 km; both exclude the origin. Total cluster includes the origin; noise sites are independent singleton clusters. Historical profile membership is reconstructed from pre-event LTE evidence and can differ from current map membership used in descriptive monthly charts.
+
+The new user_context weighting group appears in the similarity picker and per-case comparison. Available dimensions default selected; unavailable dimensions remain disabled/red. These new dimensions honor explicit deselection in both weighting modes. Existing legacy non-road fallback behavior is otherwise unchanged. Features affect CBR analog ranking; the five existing predicted KPI targets remain unchanged.
+
+KPIs & Config shows a three-ratio by three-scope table with cutoff and missing-reason support. Monthly MAOS Counters exposes the three metrics plus site, Tier 1, Tier 2, total cluster, compare-all-scopes, individual-cell and added-cell selectors. All three scopes can be plotted together. Dedicated Cluster analysis also exposes the three metrics. Charts retain null gaps, preserve real zeros, and show small nonzero shares without rounding them to false zero.
+
+Actual refresh: 890,674 unique linked cell-month rows now contain all three source counters. The targeted import executed 890,925 matching source-row updates, including duplicate cell-month keys, without overwriting unrelated counters; 2,550 source rows remain unmatched. Recalculation persisted all 3,441 profiles: 3,318 have at least one available ratio, 123 have none, zero calculation errors. Across all nine dimensions, 814 unavailable entries have zero denominator and 5,292 lack paired eligible rows. No missing value was invented as zero.
+
+BIZ_0033 pre-event profile, cutoff 2026-10-01:
+
+| Ratio | T1 | T2 | Total reconstructed cluster |
+|---|---:|---:|---:|
+| Edge user share | 0.377510 | 0.384147 | 0.368182 |
+| Edge user peak ratio | 3.643435 | 4.259082 | 4.082592 |
+| Low-latency user share | 0 | 0 | 0.0195633 |
+
+All principal persisted feature groups have 3,441 rows. Own-site history can be empty on 2G/3G-only sites because the source report is LTE-only; neighboring scopes can still be available. Legacy PreLaunchKPI has no active producer and historical configuration/clutter/road/population exclusions remain intentional. Recalculation cannot recover report-unsupported RSRP, RRC averages, busy-hour load or congestion duration.
+
+Repeat refresh with python manage.py load_maos_monthly --user-counters-only followed by python manage.py extract_user_context, or recompute through the shared feature-sync pipeline. Recalculate stored profiles after changing source counters. Availability and refresh evidence are in docs/verification/user_context/.
 
 ## 9. Population: 3 dimensions
 
@@ -202,7 +239,7 @@ WorldCover class 80 independently identifies water using categorical mode at nat
 
 population_quality / quality exposes coverage, land_coverage, water_pct, status and observed_population. Metadata does not contribute to distance. Partial mapped values can understate complete catchment population and bias comparison; this limitation is shown in the UI.
 
-All three dimensions are excluded from vectors before January 2025. Later historical use still treats population as fixed modeled 2025 context, not exact event-time population. Cache keys include source version and catchment geometry. The inspector can show current 2025 context separately from historical eligibility.
+All three dimensions are eligible across event years under the approved static-population assumption. They remain GHSL 2025 estimates, not reconstructed annual population. Cache keys include source version and catchment geometry.
 
 BIZ_0033 / 1534, 37.30341 N, 9.86391 E:
 
@@ -250,7 +287,7 @@ For pairwise available weighted dimensions, D(q,c) = sum(w_f*delta_f)/sum(w_f). 
 
 Hierarchical filtering tries event type, technology, then band Jaccard overlap >=0.5, relaxing when fewer than three cases remain. Gaussian kernel weights convert ranked distances into analog weights; these are separate from feature weights.
 
-- equal_per_feature (default): selected available dimensions receive weight 1 before normalization; existing non-road fallback weights remain active until production. Deselected roads are an explicit exception and contribute zero.
+- equal_per_feature (default): selected available dimensions receive weight 1 before normalization; existing legacy non-road fallback weights remain active until production. Deselected roads and the newly added user_context dimensions are explicit exceptions and contribute zero.
 - equal_per_group: selected pairwise-available dimensions in each group receive raw weight 1/n_available_in_group, then normalize.
 - Road budget: if raw road weight is R and other weight O, cap raw road weight at O*.05/.95 before normalization. A road-only comparison is rejected instead of becoming 100% road weight. The cap is an uncalibrated safeguard, not learned importance.
 - Source/buffer/method mismatches skip road dimensions and are reported. Actual per-case feature_weights are returned by the backend; the comparison table displays those values directly. used_features reports dimensions that actually contribute, including retained legacy non-road defaults where applicable.
@@ -305,21 +342,23 @@ Road diagnostics were run on current persisted data: weighted length/density are
 
 Time-valid predictive road ablation remains **blocked**, not passed. The 2026-10-22 snapshot postdates the historical launch pool and earlier snapshots are absent. diagnostics.json records 17 whole-site launches, 783 cell-addition site/month groups, four with/without-road and weighting-mode conditions, and NULL KPI errors. No accuracy gain or default-on recommendation is supported. Historical road snapshots and validated addition targets are needed before meaningful ablation.
 
-Previously executed implementation checks, not newly rerun for this documentation update:
+Checks executed for the current implementation, including the scoped-user extension on 2026-10-26:
 
 | Check | Observed result |
 |---|---|
-| Full Django/numerical suite | 31 tests passed |
+| Full Django/numerical suite | 41 tests passed, including sum-over-sum, paired missing values, zero denominator, time boundaries, scope membership, import preservation and explicit new-field deselection |
 | Django system check | Passed |
 | Migration consistency | No pending model changes; additive road migration applied |
 | Frontend production build | Passed; existing bundle-size advisory |
 | Population/CBR browser checks | Desktop/mobile passed; 20 BIZ_0033 scope/KPI chart combinations compared with API arrays |
 | Roads browser checks | Dedicated tab/bars/source date, seven default-off dimensions, explicit group-mode opt-in, actual table weights and <=5% road share passed; no page errors |
+| Scoped-user browser checks | Twelve monthly scope/ratio combinations and three dedicated cluster charts matched API arrays; nine picker dimensions and desktop/mobile layout passed with no page errors |
+| Scoped-user profile refresh | 3,441 processed; 3,318 have available ratios; 123 have no eligible data; zero calculation errors |
 | Road backfill | 3,440 computed, 1 NULL, 0 errors |
 | Historical forecast invariance | Future KPI/configuration changes do not alter tested historical forecasts |
 | Predictive accuracy / road ablation | Not established; blocked as described above |
 
-Artifacts: docs/verification/population/, docs/verification/biz_0033/, docs/verification/roads/ (README, browser-report.json, diagnostics.json, screenshots).
+Artifacts: docs/verification/user_context/, docs/verification/population/, docs/verification/biz_0033/, docs/verification/roads/ (README, browser-report.json, diagnostics.json, screenshots).
 
 Repeat commands:
 
@@ -330,10 +369,124 @@ python manage.py makemigrations --check --dry-run
 python manage.py extract_road_features
 python manage.py extract_road_features --provenance-only
 python manage.py road_diagnostics
+python manage.py load_maos_monthly --user-counters-only
+python manage.py extract_user_context
 npm run build                         # from frontend/
 python scripts/verify_population_browser.py
 python scripts/verify_biz_population_cbr.py
 python scripts/verify_road_browser.py
+python scripts/verify_user_context_browser.py
 ```
 
 Browser scripts require local backend/frontend servers, optional Playwright and installed Edge. Feature backfill commands write persisted values; diagnostics are read-only except their report artifact. Ask before destructive migrations. Document source/measurement-method changes and rerun relevant checks before claiming success.
+
+
+### 2026-10-26 ? MAOS aggregation validation and active-user sums
+
+For each month and scope S (site, Tier 1, Tier 2, total cluster), active users = SUM(cell.active_users_avg for cells in S). The source values are already cell averages: do not average across cells/sites, round before summing, or sum across months. This is a sum of average users, not distinct subscribers. Tier 1 excludes the query site and covers <=2 km; Tier 2 covers >2 to <=5 km. The descriptive cluster includes the query site. All-missing measurements remain NULL; measured zero remains zero; partial sums include only reporting cells.
+
+| MAOS feature | Spatial aggregation used by monthly charts and site rollups |
+|---|---|
+| Active users / traffic users | SUM(cell average counter) |
+| DL traffic GB | SUM(bits) / 8e9 |
+| PRB utilization % | 100 ? SUM(used) / SUM(available) |
+| CQI | SUM(weighted histogram total) / SUM(sample count) |
+| DL user throughput kbit/s | SUM(bits ? last-TTI bits) / SUM(time ms) |
+| Packet delay ms | SUM(delay time) / SUM(packet count) |
+| Availability % | 100 ? (1 ? SUM(unavailable seconds) / SUM(observed seconds)) |
+| Edge share | SUM(BorderUE.Avg) / SUM(Traffic.User.Avg) |
+| Edge peak ratio | SUM(BorderUE.Max) / SUM(BorderUE.Avg); this is not a simultaneous scope peak |
+| Low-latency share | SUM(LowLatency.Avg) / SUM(Traffic.User.Avg) |
+
+Ratios use paired reporting components and positive aggregate denominator. The shared `monthly_annotations()` service now supplies monthly charts, pre-event similarity site profiles and CBR site-month inputs, eliminating duplicated formulas. Similarity `pre_active_users` remains the median of the preceding three complete monthly site sums (a temporal summary). User-context ratios pool their three-month raw components. Neither operation admits event-month/future counters.
+
+`cluster_avg_users` remains a separately named contextual average of site user sums, not the total-cluster monthly KPI. CBR totals concern its fixed baseline-eligible recipient cohort, excluding the intervention site; they are not interchangeable with current descriptive map membership. CBR nonadditive outcomes are means of recipient site KPI responses, whereas descriptive monthly scope ratios pool raw components.
+
+Audit scope: the active monthly/chart, similarity and CBR site-month paths. Legacy `prelaunch_maos_values` still uses average cell PRB and zero defaults, and persisted `ClusterFeatures` still has nonnullable/default-zero fields; those older schema paths are not certified by this audit and require a separate nullable-schema correction before being treated as authoritative measured KPIs.
+
+Validation actually run: Django check; full 43-test suite; production frontend build (existing >500 kB chunk advisory). Added unequal-cell-count active-user tests for all four scopes, NULL/zero tests and pooled PRB/CQI/throughput/delay/availability fixtures. Read-only raw-cell reconciliation for BIZ_0033: all 36 months in Tier 1, Tier 2 and cluster matched (108 monthly comparisons, zero mismatches). September 2026 active users: Tier 1 157.867; Tier 2 499.9962; cluster 540.0614. The 3G-only query site has no imported LTE records, so its own value is unavailable. Evidence: `docs/verification/user_context/active-users-audit.json`; reproduce with `python manage.py shell -c "import runpy; runpy.run_path('scripts/audit_maos_aggregation.py')"`. No data migration or raw-counter rewrite was required.
+
+
+### 2026-10-26 - Strict traffic-confirmed radio network events
+
+Replaced all-zero launch dating with first strictly positive monthly DL traffic (`thrp_bits_dl`, Huawei `L.Thrp.bits.DL`). Missing traffic never becomes zero; nontraffic counters cannot confirm activation. Cell effective month is the minimum positive month; complete groups use the maximum of their member activation months and retain each member date. Positive cells at the dataset baseline are left censored and excluded from new additions; later first-positive records without earlier measured zeros are explicitly `first_positive_observed`, not proof of a known configuration change.
+
+Canonical addition precedence is SITE_ADDED > TECHNOLOGY_ADDED > FREQUENCY_BAND_ADDED > CELL_ADDED. Current-plan membership defines completeness; unknown/unactivated members prevent a complete-group event. Each added cell is consumed once. Technology events retain labels such as 4G_ADDED or 2G/3G_ADDED (combined when their completion month matches). Band identity includes technology, band and frequency. Current imported traffic is LTE-only, so 2G/3G plan membership without corresponding KPIs cannot establish complete activation.
+
+LTE bandwidth uses `L.ChMeas.PRB.DL.Avail` (`prb_dl_available`): 25/50/75/100 PRBs map to 5/10/15/20 MHz with inclusive +/-5 PRBs. A qualifying change on the same cell requires adjacent valid monthly PRB states and an old traffic-active state. Its effective date is the first positive-traffic observation at the new bandwidth; changed PRBs with zero traffic remain pending. Unknown/unmapped PRBs or missing months break transition dating. Configuration dates stay NULL because no dated configuration snapshots exist. Current configured bandwidth is preserved separately from inferred historic PRB bandwidth. Upgrades/downgrades retain old/new MHz, direction, prior observation and first changed-PRB month.
+
+Implementation: `services/models/preprocessing/network_events.py`; `MAOSLaunchDetector` delegates to it. New additive migration `core/migrations/0009_strict_radio_events.py` adds cell evidence/activation fields and `RadioNetworkEvent`, widens canonical event types, and removes no data. Events persist with deterministic keys; recomputation deactivates superseded records rather than deleting them. Serializers and the cluster endpoint delegate classification to the service. Map filters, site popup, cluster rows and markers use canonical group events; the popup shows cell activation, group completion and bandwidth before/after. Similarity, CBR and user-context cutoffs use official group dates instead of the earliest member date.
+
+Applied to current data: 29,613 cells have monthly history; 51,032 cell states evaluated; 8,511 added cells. Saved 4,798 events: 20 site, 332 technology, 1,482 band, 653 cell, 1,964 bandwidth upgrade and 347 downgrade. Sixteen identifiable bandwidth jumps across gaps were excluded. Activation evidence counts: 19,289 baseline-left-censored, 2,815 zero-to-positive, 5,696 first-positive-observed without a preceding zero, 23,232 without positive traffic. All 3,441 existing configuration summaries refreshed. Reproduce with `python manage.py detect_site_additions --dry-run` or persist with `python manage.py detect_site_additions --refresh-configuration` (Full sync uses the same service).
+
+Validation actually run: full 54-test suite; Django check; migration consistency; frontend production build (existing >500 kB chunk advisory). Independent persisted-data audit checked all 51,032 activation fields, all 4,798 event dates/PRB directions and exact-once coverage for 8,511 added cells, with zero mismatches: `scripts/verify_network_events.py`, report `docs/verification/network_events/validation.json`. These observed operational dates are month-level evidence; unobserved prehistory or the exact day of a configuration change cannot be reconstructed from this dataset.
+
+
+2026-10-26 verification follow-up: Headless Edge verified all six event classes in live popups, all six event filter options, bandwidth values, member activation months, NULL configuration dates, desktop/mobile layouts, and 626 unique cluster timeline rows; no browser errors (`docs/verification/network_events/browser-report.json`). Fixed stale map/popup responses so a previous request cannot replace a newer site's events. Event badges wrap and event details stack within the inspector. The date-dependent user-context backfill completed for all 3,441 sites: 3,276 with available features, 165 entirely unavailable, zero errors; missing pre-event support remains NULL. Final full suite: 54 tests passed; migration consistency and production frontend build passed. No destructive migration was performed.
+
+
+### 2026-10-26 - Monthly action hierarchy and grouped map icons
+
+Corrected the whole-history grouping introduced earlier today. The action boundary is the observed activation month (the source has no rollout/batch identifiers). At each site, classify the month's activated cells against only earlier positive-traffic inventory. The first qualifying site action suppresses its same-month technology/band/cell children; later technology additions remain separate. A new technology suppresses same-month band/cell children, while later cells on that technology remain eligible for band/cell additions. Unknown plan members still block unsupported complete-group claims. Future known activations never get swallowed into an earlier event. Strict positive-traffic dating and missing-data handling are unchanged; every action retains its actual member dates and uses the maximum within that monthly cohort.
+
+Multiple CELL_ADDED cells at one site in one month now persist as a single action containing their cell IDs. Different months remain separate actions in the detailed history. On the map, each site has one marker and at most one icon per event type, even when that type has multiple historical actions. Icon tooltips retain action counts. All-events mode shows all distinct types; an individual filter includes a site whenever that type occurs there. Event filters now also apply during a site-name search, which previously bypassed them.
+
+Detector version: positive-traffic-monthly-v2. Recomputed and refreshed all 3,441 configuration summaries without a schema migration; superseded records remain inactive. Current totals: 4,566 active events (20 site, 332 technology, 1,531 frequency-band, 372 grouped cell-addition, 1,964 bandwidth upgrade and 347 downgrade). Independent reconciliation still covers every one of the 8,511 added cells exactly once, and all 51,032 cell activation dates, with zero mismatches. The date-dependent user-context backfill completed with zero errors: 3,260 sites have supported features and 181 remain unavailable; all 3,441 persisted profile cutoff dates match the current official event dates.
+
+Validation run: full 57-test suite passed, including same-month parent suppression, a site followed by a later technology, a technology followed by later cells, and grouping multiple cells in one monthly action. Frontend production build passed with the existing large-chunk advisory. This entry supersedes the earlier whole-history/staggered-group interpretation; separate months cannot be assumed to belong to one rollout without batch evidence.
+
+
+2026-10-26 map verification: Live Edge checks passed for all six canonical event filters, one icon per distinct type in All-events mode, exactly one matching icon in a selected filter, and exclusion under absent-type filters even during site-name search. Examples: ZAG_0017 has nine actions but two distinct icons; SFA_0088 has six actions but two icons. All six popup classes and 606 unique cluster rows were verified, with zero page errors. Evidence: docs/verification/network_events/browser-report.json. Django system check, migration consistency (no schema change), full 57-test suite and frontend build passed. Independent event reconciliation and the 3,441-site profile-cutoff consistency check both reported zero mismatches.
+
+
+### 2026-10-26 - Explain historical feature availability and recover event evidence
+
+Investigated the reported values and matched TAT_0055, site 6306, to its TECHNOLOGY_ADDED event on 2023-12-01. The stored feature rows still exist: 4 sectors, 6 cells/sector, 25 m antenna height, 180.8 MHz configured bandwidth, z_antenna 272.367935 m, urban clutter, entropy 0.862930 and building coverage 5.495949%. The broad historical mask deliberately excluded these snapshots because their event-time configuration/provenance is not established. GHSL 2025 catchments also calculate successfully (1-km density 2188.915719 people/km2, Tier 1 15902.946226 people, Tier 2 57381.752876 people), but 2025 context cannot enter a December 2023 feature vector. These are exclusions, not failed extraction or lost data.
+
+Corrected unnecessary exclusion of supported event information: event metadata now restores tech_added=4G and bands_added=L1800,L2100,L800. Technology before/after states use strictly pre-cutoff measured traffic plus the event's confirmed technology labels; for this site LTE before=False (observed zeros), after=True (confirmed activation). Missing 2G/3G history remains NULL, not False. Event fields can be recovered for an explicitly selected later event cutoff as well as the primary event. Actual historical heights, physical configuration and unverified clutter/building snapshots remain excluded. Event band labels come from the detector's frozen plan-membership metadata; they are not proof of a dated bandwidth/antenna configuration snapshot.
+
+TAT_0055 has only one complete pre-event reporting month: November 2023, 16 cells. Raw sums of DL bits, active users, available PRBs, CQI samples, throughput time and delay packets are all zero. Thus traffic/users legitimately equal zero, while PRB/CQI/throughput/delay ratios have zero denominators and remain unavailable. Neighbor scoped edge shares of zero are valid measured ratios; their edge peak ratio is undefined when SUM(BorderUE.Avg)=0. Trends need at least two supported months and a nonzero first value. Legacy avg_*/peak-hour/congestion fields have no verified measurement windows or source counters; supported pre_* fields replace them. Total capacity is an uncomputed zero placeholder, not measured capacity. Cluster ID is deliberately excluded as an identifier. The stored 18 m building height is a class-based urban prior, not an OSM height measurement.
+
+Added services/models/similarity/availability.py with per-feature reason codes and explanations. Query availability now includes the actual feature cutoff and separately labelled inspection-only current values where available. These values never replace NULL model inputs or become eligible for historical distance. The frontend picker shows cutoff, reason, current source context, and disabled unsafe features; comparison tables show exclusion reasons for query and candidate. Both availability and search use the same official event-date helper. Canonical SITE_ADDED now receives the existing whole-site candidate-pool filter formerly limited to NEW_SITE. Candidate vector source selections/prefetches preserve service-based calculation; no data migration or raw-counter rewrite was required.
+
+Validation actually run: 60 tests passed, including event-label recovery, observed false versus unknown technology, future-KPI invariance, inspection metadata preserving NULL inputs, and zero-share versus undefined-ratio reasons. Live headless Edge verified TAT_0055 at the 2023-12-01 cutoff, all recovered event values, disabled excluded features, reason text and current population/configuration inspection on desktop and mobile, with no page errors. Frontend production build passed (existing large-chunk advisory). Evidence: docs/verification/feature_availability/browser-report.json and desktop/mobile screenshots; reproduce with python scripts/verify_feature_availability_browser.py.
+
+
+### 2026-10-26 - Approved static context and KPI-derived after configuration
+
+User-approved policy: all geographic inputs, stored land-cover/building-height estimates, and GHSL 2025 population are stable across event years. This supersedes the earlier historical masks and population-before-2025 exclusion. KPI performance retains strict timing. The antenna-height fallback is explicitly 25 m until a positive real plan value is available. Policy and uncalibrated relief thresholds are in config/feature_context.json. Implementation: services/models/features/approved_context.py.
+
+| Feature | Formula, source and use |
+|---|---|
+| sector_count_after | Select cells with positive KPI traffic at/before the event, including the detected action's cell IDs, join to actual cell-plan azimuths, count distinct round((azimuth modulo 360)/5) modulo 72. Never include later cells. Used by similarity and popup configuration. |
+| cells_per_sector_after | Number of KPI-evidenced after cells divided by sector count. No evidence stays NULL. Unreported 2G/3G cells are not invented as active. |
+| total_bw_after_mhz | For every evidenced LTE cell, use latest nonnegative available-PRB observation no later than event month; map 25/50/75/100 to 5/10/15/20 MHz within inclusive +/-5. Sum only when every required cell maps; otherwise NULL. User explicitly retained strict mapping, not PRB-equivalent estimates. |
+| total_prb_available | Sum actual available-PRB counter values across evidenced LTE cells, preserving fractional report averages. New correctly named PRB capacity field; no conversion to Mbps. Legacy total_capacity_after_mbps remains unsupported. |
+| z_antenna_m | DEM ground elevation + stored land-cover building-height estimate + mean positive plan antenna height or 25 m fallback. Each component added once; missing DEM/building stays NULL. Persisted for fast static reuse. |
+| neighbor_avg_antenna_height_m | Mean supported absolute antenna elevations of other sites within 2 km, same ground + building + mast formula. Missing neighbors/components stay NULL; name retained for compatibility, label says absolute elevation in m ASL. |
+| terrain_relief_class | Separate from dominant_clutter. DEM slope <2 flat, 2-<5 rolling, 5-<15 hilly, >=15 steep. Configurable uncalibrated prior; optional/off by default in similarity. Hillshade/elevation colours remain terrain visualizations. |
+| dominant_clutter and other clutter fields | Retain static WorldCover/OSM/land-cover estimates. Urban building-height 18 m is an estimate, not a measured roof height. |
+| population dimensions | Native 100 m GHSL 2025 catchments now eligible for earlier events under the explicit stability assumption. No change to mapped-area calculations or missing-land rules. |
+| avg_users | SUM(active_users_avg) over all reporting cells in the static site cluster during the immediately preceding calendar month; never average users across sites. |
+| avg_traffic_dl_gb | SUM(DL bits) / 8e9 in that cluster/month. |
+| avg_prb_util_pct, avg_cqi | Pooled raw component ratios in that cluster/month, preserving paired-counter masks and undefined zero denominators. |
+| cluster_pre_dl_throughput_kbps | SUM(bits-last-TTI bits) / SUM(time ms), previous cluster month. |
+| cluster_pre_dl_packet_delay_ms | SUM(delay time ms) / SUM(packet count), previous cluster month. |
+| cluster_pre_cell_availability_pct | 100 * (1 - SUM(unavailable seconds)/SUM(observed seconds)), previous cluster month. |
+| cluster_id | Inherit the site's calculated spatial cluster on every cell/sector. Noise stays -1 and each noise site is an independent singleton. Display only, excluded from Gower and weights. |
+| cluster_avg_users | Compatibility display alias for avg_users; excluded from weights to avoid counting the same cluster-user sum twice. |
+
+The three-month own-site pre_* profiles remain separate, clearly labelled site metrics; they do not silently change to cluster scope. Cluster baselines use exactly month -1, not the nearest available older month. UL, RSRP and hourly peak/congestion fields remain NULL without source counters. Event-month PRBs are configuration observations; event-month/future KPI performance is not used in pre-event baselines or outcome training.
+
+Additive migrations 0010_approved_static_context and 0011_nullable_absolute_antenna_heights were shown before applying. They add PRB capacity and terrain class, allow honest NULL configuration/height fields, and remove no data. The shared extraction pipeline now preserves PRB-based configuration and the absolute-elevation formula. Run python manage.py refresh_approved_context to recalculate stored configuration/height context; cluster pre-event baselines are calculated per requested cutoff, not stored as undated legacy KPIs.
+
+Actual refresh: 3,441 sites updated, zero errors. Supported persisted counts: 2,706 sector counts, 2,706 PRB capacities, 1,818 complete strictly mapped MHz totals, 3,441 terrain classes, 2,631 neighbor absolute elevations. Missing counts reflect absent LTE evidence, unaligned PRBs or absent neighbors, not imputed zeros. Registry now has 94 declared fields: 81 numeric and 13 categorical, including display-only IDs/aliases and the retained unsupported legacy Mbps field.
+
+Independent TAT_0055 (6306), cutoff 2023-12-01: 16 evidenced LTE cells out of 24 plan cells; sectors 4; cells/sector 4; antenna 25 m; capacity 572.6143 PRBs; absolute antenna elevation 290.367935 m; mean neighbor absolute elevation 284.098386 m; terrain relief rolling, land-cover clutter urban; population T1 15902.946226, T2 57381.752876. Twelve cells have PRB averages outside strict mapping windows, so total MHz is correctly NULL. Cluster 81 has nine member sites, seven reporting sites and 76 reporting cells in November 2023; user sum 75.4926, DL traffic 87050.895392 GB/month, PRB utilization 29.159101%, CQI 9.835623. Independent raw reconciliation reported zero mismatches (docs/verification/approved_context/data-audit.json).
+
+Checks actually run so far: full 66-test suite passed, including missing versus zero, modulo-360 sectors, PRB mapping and future-month exclusion, cluster sum/weighted ratios, isolated noise clusters, absolute elevation and display-only identifier weighting. Django system check and migration consistency passed. Browser and final frontend build verification are recorded separately when completed.
+
+
+2026-10-26 final approved-context verification: measured zero PRBs are preserved as zero capacity rather than replaced by an older positive value; strict MHz mapping still rejects zero/unmapped PRBs. The KPI-only bulk refresh (python manage.py refresh_approved_context --configuration-only) updated all 3,441 configuration rows with zero errors. Final supported MHz count is 1,818 (supersedes the earlier 1,820 count); sector/PRB capacity counts remain 2,706. Static cluster membership is now shared by cluster baselines, scoped user ratios and CBR cluster scope; outcome recipients still require pre-cutoff activity and noise sites never pool together. All 3,441 scoped user profiles were refreshed: 3,260 have supported values, 181 remain unavailable, zero errors.
+
+Final full suite: 68 tests passed; Django check and migration consistency passed. Frontend production build passed with the existing large-chunk advisory. Live Edge verified all 94 feature fields, historical-year static population/geography eligibility, KPI-projected sectors, correctly labelled PRB capacity, strict unmapped MHz exclusion, previous-month summed cluster users, sector inheritance of cluster ID, display-only identifiers/aliases, optional terrain relief distinct from land-cover clutter, and matching popup/similarity values on desktop/mobile, with zero page errors. Independent TAT_0055 raw-cell/cluster/DEM reconciliation reported zero mismatches. Evidence: docs/verification/approved_context/data-audit.json and browser-report.json. feature_eng.md is the current formula reference; older dated exclusion policies are superseded by this approved static-context policy.

@@ -4,7 +4,7 @@ from datetime import date
 from statistics import median
 
 import numpy as np
-from django.db.models import Count, F, Max, Min, Q, Sum
+from django.db.models import Max, Min
 
 from core.models import Cell, MAOSMonthlyKPI, Site
 from services.models.preprocessing.maos_aggregation import normalize_monthly_totals
@@ -12,6 +12,7 @@ from services.models.similarity import build_site_similarity_vector, rank_simila
 from services.models.similarity.gower_distance import GowerDistance
 from services.models.similarity.historical import cluster_members
 from services.models.features.road_loader import ROAD_FIELDS
+from services.models.features.maos_context import monthly_annotations
 from services.utils.geo_utils import haversine
 
 
@@ -73,45 +74,7 @@ def _row_value(row, key):
 
 def _month_rows():
     queryset = MAOSMonthlyKPI.objects.values('cell__site__site_id', 'month_date').annotate(
-        traffic_bits=Sum('thrp_bits_dl'),
-        dl_bits=Sum('thrp_bits_dl', filter=Q(
-            thrp_time_dl_ms__isnull=False, thrp_bits_dl_last_tti__isnull=False,
-            thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'),
-        )),
-        dl_last_tti_bits=Sum('thrp_bits_dl_last_tti', filter=Q(
-            thrp_time_dl_ms__isnull=False, thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'),
-        )),
-        dl_time_ms=Sum('thrp_time_dl_ms', filter=Q(
-            thrp_time_dl_ms__isnull=False, thrp_bits_dl_last_tti__isnull=False,
-            thrp_bits_dl__gte=F('thrp_bits_dl_last_tti'),
-        )),
-        prb_used=Sum('prb_dl_used_avg', filter=Q(
-            prb_dl_used_avg__isnull=False, prb_dl_available__gt=0,
-        )),
-        prb_available=Sum('prb_dl_available', filter=Q(
-            prb_dl_used_avg__isnull=False, prb_dl_available__gt=0,
-        )),
-        delay_time_ms=Sum('dl_packet_delay_time_ms', filter=Q(
-            dl_packet_delay_time_ms__isnull=False, dl_packet_delay_packets__gt=0,
-        )),
-        delay_packets=Sum('dl_packet_delay_packets', filter=Q(
-            dl_packet_delay_time_ms__isnull=False, dl_packet_delay_packets__gt=0,
-        )),
-        unavailable_s=Sum('cell_unavail_duration_s', filter=Q(
-            cell_unavail_duration_s__isnull=False, observation_duration_s__gt=0,
-        )),
-        observation_s=Sum('observation_duration_s', filter=Q(
-            cell_unavail_duration_s__isnull=False, observation_duration_s__gt=0,
-        )),
-        cqi_weighted_total=Sum('cqi_weighted_sum', filter=Q(
-            cqi_weighted_sum__isnull=False, cqi_sample_count__gt=0,
-        )),
-        cqi_sample_count=Sum('cqi_sample_count', filter=Q(
-            cqi_weighted_sum__isnull=False, cqi_sample_count__gt=0,
-        )),
-        active_users=Sum('active_users_avg'),
-        traffic_users=Sum('traffic_user_avg'),
-        reporting_cells=Count('cell_id', distinct=True),
+        **monthly_annotations(),
     ).order_by('cell__site__site_id', 'month_date')
     by_site = defaultdict(dict)
     for row in queryset.iterator(chunk_size=10_000):
@@ -318,9 +281,8 @@ def build_cbr_impact_prediction(site_id):
     latest_month = MAOSMonthlyKPI.objects.aggregate(month=Max('month_date'))['month']
     if latest_month is None:
         return {'error': 'No monthly MAOS data is available.'}
-    query_event_date = query_site.launch_date or Cell.objects.filter(
-        site=query_site, is_launched=True, launch_date__isnull=False
-    ).aggregate(event_date=Min('launch_date'))['event_date']
+    from services.models.preprocessing.network_events import effective_event_date
+    query_event_date = effective_event_date(query_site)
     detected_event = query_event_date is not None
     event_date = query_event_date or _next_month(latest_month)
     cutoff = event_date.replace(day=1)
@@ -438,7 +400,7 @@ def build_cbr_impact_prediction(site_id):
         'query': {
             'site_id': query_site.site_id,
             'site_name': query_site.site_name,
-            'cluster_id': None,
+            'cluster_id': query_site.cluster_id,
             'event_date': event_date.isoformat(),
             'event_date_detected': detected_event,
             'date_note': 'Detected event date' if detected_event else 'Scenario date: month after latest available MAOS data',
