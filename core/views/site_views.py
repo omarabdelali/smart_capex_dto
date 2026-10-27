@@ -26,6 +26,17 @@ class SiteViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Site.objects.all()
     serializer_class = SiteSerializer
     lookup_field = 'site_id'
+
+    @action(detail=True,methods=['get'],url_path='map-links')
+    def map_links(self,request,site_id=None):
+        from services.models.features.neighborhood import map_links
+        return Response(map_links(self.get_object()))
+
+    @action(detail=True,methods=['get'])
+    def neighborhood(self,request,site_id=None):
+        from services.models.features.neighborhood import analysis_payload
+        payload,code=analysis_payload(self.get_object(),request.query_params)
+        return Response(payload,status=code)
     
     def get_queryset(self):
         """

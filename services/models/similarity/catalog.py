@@ -16,6 +16,7 @@ POPULATION_LABELS = {
     'population_tier2': ('Tier 2 population (2–5 km)', 'people'),
 }
 CONTEXT_LABELS = {
+    'tier_scheme':('Tier scheme (mandatory comparison partition)',''),
     'avg_building_height_m':('Building height estimate (land-cover class prior)','m'),
     'total_prb_available':('Site LTE PRB capacity','PRBs'),
     'total_capacity_after_mbps':('Legacy Mbps capacity (use PRB capacity)','Mbps'),
@@ -34,6 +35,6 @@ CONTEXT_LABELS = {
     'pre_active_users':('Site active users - preceding 3-month median','users'),
     'pre_traffic_users':('Site traffic users - preceding 3-month median','users'),
 }
-DISPLAY_ONLY = {'cluster_id','cluster_avg_users'}
+DISPLAY_ONLY = {'cluster_id','cluster_avg_users','tier_scheme'}
 OPTIONAL = set(ROAD_FIELDS) | DISPLAY_ONLY | {'terrain_relief_class'}
 

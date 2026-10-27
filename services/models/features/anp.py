@@ -42,13 +42,14 @@ class ANPComputer:
     N_BINS = 12  # 12 bins of 30° each
     BIN_SIZE_DEG = 360.0 / N_BINS  # 30°
     
-    def __init__(self, use_sector_alignment: bool = True):
+    def __init__(self, use_sector_alignment: bool = True, tier_scheme="standard"):
         """
         Initialize ANP computer.
         
         Args:
             use_sector_alignment: Align bins to 0°, 120°, 240° (standard tri-sector)
         """
+        self.tier_scheme = tier_scheme
         self.use_sector_alignment = use_sector_alignment
         
     def compute_anp(
@@ -90,8 +91,9 @@ class ANPComputer:
             })
         
         # Filter by distance tiers
-        tier1 = [n for n in neighbors if n['distance'] <= self.TIER1_MAX]
-        tier2 = [n for n in neighbors if self.TIER2_MIN < n['distance'] <= self.TIER2_MAX]
+        from .neighborhood import tier
+        tier1 = [n for n in neighbors if tier(n['distance'],self.tier_scheme)=='tier1']
+        tier2 = [n for n in neighbors if tier(n['distance'],self.tier_scheme)=='tier2']
         
         # Extract bearings for each tier
         t1_bearings = [n['bearing'] for n in tier1]

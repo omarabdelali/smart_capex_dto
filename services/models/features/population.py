@@ -37,14 +37,15 @@ def water_cells(crs, grid, shape):
         return np.zeros(shape, dtype=bool)
 
 
-def population_features(latitude, longitude):
+def population_features(latitude, longitude, tier_scheme='standard'):
     try:
         version = (POPULATION_PATH.stat().st_mtime_ns,
                    WORLDCOVER_PATH.stat().st_mtime_ns if WORLDCOVER_PATH.exists() else None)
         args = (str(POPULATION_PATH), version, float(latitude), float(longitude))
         density = _catchment(*args)
-        tier1 = _catchment(*args, radius=2000)
-        tier2 = _catchment(*args, radius=5000, inner_radius=2000)
+        inner,outer = (5000,10000) if tier_scheme=='extended' else (2000,5000)
+        tier1 = _catchment(*args, radius=inner)
+        tier2 = _catchment(*args, radius=outer, inner_radius=inner)
         return {'population_density_1km_per_km2': density['population_density_1km_per_km2'],
                 'population_tier1': tier1['population_total'],
                 'population_tier2': tier2['population_total'],

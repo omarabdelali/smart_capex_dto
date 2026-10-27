@@ -46,6 +46,7 @@
       
       <!-- Tab content -->
       <div class="tab-content">
+        <NeighborhoodPanel v-if="activeTab === 'neighborhood'" :site-id="features.site_id" :payload="features.neighborhood || {}" />
         <!-- Overview Tab -->
         <div v-if="activeTab === 'overview'" class="tab-pane">
           <div class="info-grid">
@@ -73,9 +74,12 @@
           <section v-if="features.network_events?.length" class="added-cells radio-events">
             <h4>Traffic-confirmed radio events</h4>
             <p>Effective dates are monthly KPI observations. Configuration dates are unknown unless recorded separately.</p>
+            <p>Additions are grouped by activation month; later additions remain separate actions. Effect measurement starts in the following month.</p>
             <ul>
               <li v-for="event in features.network_events" :key="event.event_key">
                 <strong>{{ eventTitle(event) }} · effective {{ event.event_date }}</strong>
+                <span class="radio-event-label">{{ event.event_label }}</span>
+                <span v-if="event.confirmation_month">Sustained bandwidth confirmed {{ event.confirmation_month }} ({{ event.confirmation_months_required }} consecutive months required).</span>
                 <span v-if="event.previous_bandwidth_mhz != null">{{ event.previous_bandwidth_mhz }} → {{ event.new_bandwidth_mhz }} MHz · PRB change observed {{ event.first_changed_prb_month }}</span>
                 <span v-for="(month, cellId) in event.cell_activation_months" :key="cellId">{{ cellId }} · first positive traffic {{ month }}</span>
                 <span>Configuration date: {{ event.configuration_date || 'Unknown' }}</span>
@@ -296,7 +300,7 @@
           <section v-if="features.user_context" class="user-context-panel">
             <h4>Pre-event edge and low-latency users</h4>
             <p>Three complete months before {{ features.user_context.profile_as_of_date }}. Ratios are sum over sum; unavailable means no paired data or a zero denominator. Pre-event membership is reconstructed from LTE activity and may differ from current map membership used in monthly charts.</p>
-            <div class="user-table-scroll"><table><thead><tr><th>Feature</th><th>Tier 1 (0-2 km)</th><th>Tier 2 (2-5 km)</th><th>Total cluster</th></tr></thead><tbody>
+            <div class="user-table-scroll"><table><thead><tr><th>Feature</th><th>{{ features.neighborhood?.event?.labels?.tier1 }}</th><th>{{ features.neighborhood?.event?.labels?.tier2 }}</th><th>Real DBSCAN cluster</th></tr></thead><tbody>
               <tr v-for="metric in userRatioRows" :key="metric.key"><th>{{ metric.label }}</th><td v-for="scope in ['tier1','tier2','cluster']" :key="scope" :title="features.user_context.support?.[scope]?.ratios?.[metric.key]?.unavailable_reason || 'Calculated from paired source counters'">{{ formatUserRatio(features.user_context[scope + '_' + metric.key]) }}</td></tr>
             </tbody></table></div>
           </section>
@@ -320,13 +324,14 @@ import { ref, computed, watch } from 'vue';
 import axios from 'axios';
 import ANPPolarChart from './ANPPolarChart.vue';
 import MAOSMonthlyChart from './MAOSMonthlyChart.vue';
+import NeighborhoodPanel from './NeighborhoodPanel.vue';
 
 export default {
   name: 'SiteFeaturePopup',
   
   components: {
     ANPPolarChart,
-    MAOSMonthlyChart
+    MAOSMonthlyChart, NeighborhoodPanel
   },
   
   props: {
@@ -359,6 +364,7 @@ export default {
       { id: 'geometric', label: 'Terrain' },
       { id: 'clutter', label: 'Clutter' },
       { id: 'spatial', label: 'Spatial' },
+      { id: 'neighborhood', label: 'Neighborhood' },
       { id: 'population', label: 'Population' },
       { id: 'roads', label: 'Roads' },
       { id: 'network', label: 'KPIs & Config' },
@@ -380,8 +386,8 @@ export default {
     });
     const populationRows = computed(() => [
       { key: 'population_density_1km_per_km2', label: 'Density within 1 km', unit: 'people/km²', quality: features.value?.population?.quality?.density_1km },
-      { key: 'population_tier1', label: 'Tier 1 population (0–2 km)', unit: 'people', quality: features.value?.population?.quality?.tier1 },
-      { key: 'population_tier2', label: 'Tier 2 population (2–5 km)', unit: 'people', quality: features.value?.population?.quality?.tier2 },
+      { key: 'population_tier1', label: features.value?.tier_scheme === 'extended' ? 'Tier 1 population (<5 km)' : 'Tier 1 population (0-2 km)', unit: 'people', quality: features.value?.population?.quality?.tier1 },
+      { key: 'population_tier2', label: features.value?.tier_scheme === 'extended' ? 'Tier 2 population (5-<10 km)' : 'Tier 2 population (2-5 km)', unit: 'people', quality: features.value?.population?.quality?.tier2 },
     ].map(item => ({ ...item, value: features.value?.population?.[item.key] })));
     // Computed properties for site info
     const clusterLabel = computed(() => {

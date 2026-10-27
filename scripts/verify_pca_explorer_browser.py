@@ -59,7 +59,7 @@ def verify():
         page.get_by_role('button', name='Similarity', exact=True).click()
         page.locator('#site-search').fill('TAT_0055')
         page.get_by_role('option').filter(has=page.locator('span', has_text=re.compile('^6306$'))).click()
-        expect(page.locator('[data-feature-key]')).to_have_count(94, timeout=60000)
+        expect(page.locator('[data-feature-key]')).to_have_count(95, timeout=60000)
         page.locator('#representation').select_option('pca')
         print('Waiting for candidate PCA preparation...', flush=True)
         expect(page.locator('[data-feature-key="PC1"]')).to_be_visible(timeout=900000)
@@ -73,8 +73,8 @@ def verify():
         page.screenshot(path=str(output / 'pca-comparison.png'))
         checks.append('PCA picker, explained variance, component loadings and real ranked comparison')
         page.locator('#representation').select_option('original')
-        expect(page.locator('[data-feature-key]')).to_have_count(94, timeout=60000)
-        checks.append('All 94 original fields preserved when switching back')
+        expect(page.locator('[data-feature-key]')).to_have_count(95, timeout=60000)
+        checks.append('All 95 original fields preserved when switching back')
         assert not errors, errors
         browser.close()
     report = {'checks': checks, 'page_errors': errors}

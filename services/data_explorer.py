@@ -117,6 +117,10 @@ def filter_sites(params):
             raise ValueError('cluster_id must be an integer (noise is -1).')
         sites = sites.filter(cluster_id=cluster)
     technology = params.get('technology', '')
+    if params.get('tier_scheme'):
+        if params['tier_scheme'] not in ('standard','extended'):
+            raise ValueError('tier_scheme must be standard or extended.')
+        sites=sites.filter(tier_scheme=params['tier_scheme'])
     if technology:
         if technology not in ('2G', '3G', '4G'):
             raise ValueError('technology must be 2G, 3G or 4G.')
@@ -222,15 +226,21 @@ def _explore(params):
                          'technology': row['cell__technology'], **{f: row[f] for f in selected}})
         scope = 'cell'
     else:
-        if scope not in ('cell', 'site', 'cluster', 'tier1', 'tier2'):
+        if scope not in ('cell', 'site', 'cluster', 'tier1', 'tier2','virtual_cluster','distance_0_2','distance_2_5','distance_5_10'):
             raise ValueError('Unknown calculated KPI scope.')
         grouping = ['month_date']
-        if scope in ('tier1', 'tier2'):
+        if scope in ('tier1', 'tier2','virtual_cluster','distance_0_2','distance_2_5','distance_5_10'):
             origin = Site.objects.filter(site_id=params.get('origin_site_id', '')).first()
             if origin is None:
                 raise ValueError('Tier scopes require an existing origin_site_id.')
-            queryset = queryset.filter(cell__site__site_id__in=scope_members(origin)[scope])
+            if scope=='virtual_cluster' and selected!=['thrp_dl_gb']:
+                raise ValueError('Virtual samples are traffic-only: select thrp_dl_gb.')
+            from services.models.features.neighborhood import offset
+            latest=MAOSMonthlyKPI.objects.aggregate(value=Max('month_date'))['value']
+            cutoff=offset(latest,1) if latest else date.today().replace(day=1)
+            queryset = queryset.filter(cell__site__site_id__in=scope_members(origin,cutoff=cutoff)[scope])
         elif scope == 'cluster':
+            queryset=queryset.exclude(cell__site__cluster_id=-1)
             queryset = queryset.annotate(noise_site=Case(When(cell__site__cluster_id=-1, then=F('cell__site__site_id')), default=Value(''), output_field=CharField()))
             grouping += ['cell__site__cluster_id', 'noise_site']
         else:
@@ -248,7 +258,7 @@ def _explore(params):
                 'cell': row.get('cell__cell_name'), 'technology': row.get('cell__technology'),
                 'reporting_cells': row['reporting_cells'], 'reporting_sites': row['reporting_sites'], **{f: values[f] for f in selected}})
     return {'dataset': dataset, 'scope': scope, 'count': count, 'page': page, 'page_size': size, 'columns': selected, 'rows': rows,
-            'note': 'Filters are applied before aggregation. Calculated ratios pool paired raw counters. Month range is inclusive. NULL is not zero.'}
+            'note': 'Filters apply before aggregation. Ratios pool paired raw counters. Month range is inclusive. Radius scopes use current membership and tier scheme of the origin. Virtual traffic is a one-per-bin sample, not the complete total. Cluster excludes noise. NULL is not zero.'}
 
 
 def explore_features(params, sites, selected, rule, page, size):
@@ -287,6 +297,7 @@ def explore_features(params, sites, selected, rule, page, size):
             if not start < matched <= end:
                 continue
         rows.append({'site_id': site.site_id, 'site_name': site.site_name, 'cluster_id': site.cluster_id,
+            'tier_scheme':vector.get('tier_scheme'),
             'as_of': vector['feature_as_of_date'], 'event_date': effective_event_date(site),
             **{f: None if GowerDistance._is_missing(vector.get(f)) else vector.get(f) for f in selected}})
     return {'dataset': 'features', 'scope': 'site', 'count': matched if rule else count, 'page': page, 'page_size': size,

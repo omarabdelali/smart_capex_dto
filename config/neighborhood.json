@@ -1,0 +1,10 @@
+{
+  "location_tolerance_m": 50,
+  "minimum_neighbor_distance_m": 50,
+  "virtual_radius_m": 10000,
+  "bin_size_deg": 30,
+  "bearing_decimals": 6,
+  "virtual_max_members": 12,
+  "baseline_months": 3,
+  "version": "neighborhood-v1"
+}

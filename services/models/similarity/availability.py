@@ -12,6 +12,9 @@ def feature_statuses(site, vector, include_current=False):
     """Report real missing-source reasons under the approved static-context policy."""
     statuses = {}
     for key in GowerDistance.NUMERIC_FEATURES + GowerDistance.CATEGORICAL_FEATURES:
+        if key == 'tier_scheme':
+            statuses[key]={'code':'mandatory_tier_partition','reason':'Standard and extended tiers are hard-filtered before ranking and PCA; this rule cannot be deselected.','selectable':False}
+            continue
         if key == 'cluster_id':
             statuses[key]={'code':'identifier_display_only','reason':'Inherited site cluster ID; noise is -1. Displayed but never used as a distance dimension.','selectable':False}
             continue

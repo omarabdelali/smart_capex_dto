@@ -18,6 +18,9 @@ def candidate_context(query_site, query_vector, current_as_of):
             Q(is_launched=True, launch_date__isnull=False)
             | Q(cells__is_launched=True, cells__launch_date__isnull=False)
         ).exclude(pk=query_site.pk).distinct()
+    candidate_queryset = candidate_queryset.filter(cluster_id=-1) if query_site.cluster_id==-1 else candidate_queryset.exclude(cluster_id=-1)
+    if query_site.canonical_site_id:
+        candidate_queryset = candidate_queryset.exclude(canonical_site_id=query_site.canonical_site_id)
     all_candidate_count = candidate_queryset.count()
 
     # Hierarchical filtering must use reconstructed vectors, never current
@@ -34,7 +37,7 @@ def candidate_context(query_site, query_vector, current_as_of):
     labels = []
     for site in candidates:
         cutoff = profile_cutoff(site, current_as_of)
-        labels.append({'site_id': site.site_id,
+        labels.append({'site_id': site.site_id, 'tier_scheme':'extended' if site.cluster_id==-1 else 'standard',
             'event_type': 'SITE_ADDED' if site.is_launched and site.launch_date and site.launch_date.replace(day=1) == cutoff else None,
             **event_labels(site, cutoff)})
     indices = HierarchicalFilter().filter_cases(query_vector, labels)

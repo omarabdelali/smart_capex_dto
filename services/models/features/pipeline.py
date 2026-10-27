@@ -10,7 +10,7 @@ from datetime import datetime
 from django.db import transaction
 from django.db.models import Avg, Q
 
-from core.models import Cell, Site
+from core.models import Cell, Site, MAOSMonthlyKPI
 from core.models.features import (
     ConfigurationFeatures,
     GeometricFeatures,
@@ -96,6 +96,8 @@ class FeatureExtractionPipeline:
         Returns:
             Dictionary with extraction statistics
         """
+        from .neighborhood import refresh_current
+        refresh_current(progress=(lambda value:progress_callback({'stage':'neighborhood',**value})) if progress_callback else None)
         # Get sites to process
         if site_ids:
             sites = Site.objects.filter(site_id__in=site_ids)
@@ -300,32 +302,19 @@ class FeatureExtractionPipeline:
             Dictionary of ANP features or None if extraction failed
         """
         try:
-            # Get neighbor data (within 5km)
-            neighbors = []
-            for other_site in sites_data:
-                if other_site['site_id'] == site.site_id:
-                    continue
-                
-                # Simple distance check (approximate)
-                lat_diff = abs(other_site['latitude'] - site.latitude)
-                lon_diff = abs(other_site['longitude'] - site.longitude)
-                
-                # Rough 5km filter (0.045° ≈ 5km at Tunisia latitude)
-                if lat_diff < 0.045 and lon_diff < 0.045:
-                    neighbors.append({
-                        'latitude': other_site['latitude'],
-                        'longitude': other_site['longitude'],
-                    })
-            
-            # Compute ANP features
-            neighbor_coords = [(n['latitude'], n['longitude']) for n in neighbors]
-            
-            anp_result = anp_computer.compute_anp(
-                target_lat=site.latitude,
-                target_lon=site.longitude,
-                neighbor_coords=neighbor_coords
-            )
-            
+            from .neighborhood import neighborhood
+            from .neighborhood import offset
+            from django.db.models import Max
+            if not hasattr(self,'_neighborhood_cache'):
+                self._neighborhood_cache={}
+                latest=MAOSMonthlyKPI.objects.aggregate(value=Max('month_date'))['value']
+                self._neighborhood_cutoff=offset(latest,1) if latest else datetime.today().date().replace(day=1)
+            context=neighborhood(site,self._neighborhood_cutoff,self._neighborhood_cache)
+            neighbors=context['scopes']['tier1']+context['scopes']['tier2']
+            anp_result=ANPComputer(tier_scheme=context['tier_scheme']).compute_anp(
+                site.latitude,site.longitude,[(r['latitude'],r['longitude']) for r in neighbors],
+                [r['distance_m'] for r in neighbors])
+
             return {
                 'n_tier1': anp_result['n_tier1'],
                 'n_tier2': anp_result['n_tier2'],

@@ -83,7 +83,7 @@ class ApprovedContextTests(TestCase):
         for site,users in [(a,3),(b,99)]:
             cell=self.cell(site,site.site_id)
             MAOSMonthlyKPI.objects.create(cell=cell,month_date=NOV,active_users_avg=users)
-        self.assertEqual(cluster_prelaunch_values(a,DEC,{})['avg_users'],3)
+        self.assertIsNone(cluster_prelaunch_values(a,DEC,{})['avg_users'])
         self.assertIsNone(cluster_prelaunch_values(a,date(2023,11,1),{})['avg_users'])
 
     def test_static_absolute_elevation_adds_ground_building_and_mast_once(self):
@@ -120,4 +120,4 @@ class ApprovedContextTests(TestCase):
                  for site in (same,other)}
         self.assertEqual({row['site_id'] for row in cluster_members(origin,network)},{'origin','same'})
         origin.cluster_id=-1
-        self.assertEqual([row['site_id'] for row in cluster_members(origin,network)],['origin'])
+        self.assertEqual(cluster_members(origin,network),[])

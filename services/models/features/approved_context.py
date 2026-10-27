@@ -132,7 +132,9 @@ def static_context(site,cache):
     values['static_context_support']={'neighbor_count':len(neighbors),'neighbor_height_count':len(supported),
         'height_formula':'DEM ground elevation + stored building-height estimate + antenna height',
         'static_population':True,'static_geographic_context':True}
-    group=[r for r in inventory if r['cluster_id']==site.cluster_id] if site.cluster_id!=-1 else [row] if row else []
+    from .neighborhood import inventory as location_inventory
+    locations,_ = location_inventory(cache)
+    group=[r for r in locations.values() if r['cluster_id']==site.cluster_id] if site.cluster_id!=-1 else []
     if group:
         project=Transformer.from_crs('EPSG:4326','EPSG:32632',always_xy=True)
         points=[Point(*project.transform(r['longitude'],r['latitude'])) for r in group]
@@ -153,27 +155,32 @@ def cluster_prelaunch_values(site,cutoff,cache):
         rows=MAOSMonthlyKPI.objects.filter(month_date=previous).values('cell__site__site_id').annotate(**monthly_annotations())
         cache[cache_key]={r['cell__site__site_id']:r for r in rows}
     inventory=static_inventory(cache)
-    members=[r['site_id'] for r in inventory if r['cluster_id']==site.cluster_id] if site.cluster_id!=-1 else [site.site_id]
+    members=[r['site_id'] for r in inventory if r['cluster_id']==site.cluster_id] if site.cluster_id!=-1 else []
     rows=[cache[cache_key][member] for member in members if member in cache[cache_key]]
     sums={}
     for name in monthly_annotations():
         observed=[r[name] for r in rows if r.get(name) is not None]
         sums[name]=sum(observed) if observed else None
     metrics=normalize_monthly_totals(sums)
+    from .neighborhood import inventory as location_inventory
+    locations,_ = location_inventory(cache)
+    member_locations=[r for r in locations.values() if site.cluster_id!=-1 and r['cluster_id']==site.cluster_id]
+    reporting_locations=sum(any(key in cache[cache_key] for key in r['site_ids']) for r in member_locations)
     return {'avg_traffic_dl_gb':metrics['thrp_dl_gb'],'avg_users':metrics['active_users_avg'],
         'avg_prb_util_pct':metrics['prb_util_dl_pct'],'avg_cqi':metrics['cqi_avg'],
         'cluster_avg_users':metrics['active_users_avg'],
-        'cluster_avg_traffic_gb':metrics['thrp_dl_gb']/len(rows) if metrics['thrp_dl_gb'] is not None and rows else None,
+        'cluster_avg_traffic_gb':metrics['thrp_dl_gb']/reporting_locations if metrics['thrp_dl_gb'] is not None and reporting_locations else None,
         'cluster_pre_dl_throughput_kbps':metrics['dl_throughput_kbps'],
         'cluster_pre_dl_packet_delay_ms':metrics['dl_packet_delay_ms'],
         'cluster_pre_cell_availability_pct':metrics['cell_availability_pct'],
-        'cluster_prelaunch_support':{'month':previous.isoformat(),'member_sites':len(members),
-            'reporting_sites':len(rows),'reporting_cells':sums.get('reporting_cells'),
-            'membership':'static site cluster; noise is an independent singleton',
+        'cluster_prelaunch_support':{'month':previous.isoformat(),'member_sites':len(member_locations),
+            'reporting_sites':reporting_locations,'reporting_cells':sums.get('reporting_cells'),
+            'membership':'real DBSCAN cluster; noise has no real cluster (virtual traffic sample is separate)',
             'active_users_aggregation':'sum of cell averages'}}
 
 
 def approved_feature_values(site,cutoff,cache):
+    from .neighborhood import public_context, scheme
     values=post_event_configuration(site,cutoff)
     values.update(static_context(site,cache))
     geometry=relation(site,'geometric_features')
@@ -182,6 +189,8 @@ def approved_feature_values(site,cutoff,cache):
     for key in ('dominant_clutter','clutter_entropy_2km','pct_building_area_1km','avg_building_height_m'):
         values[key]=getattr(clutter,key,None)
     values.update(cluster_prelaunch_values(site,cutoff,cache))
+    values['tier_scheme']=scheme(site)
+    values['virtual_cluster_context']=public_context(site,cutoff,cache)
     return values
 
 

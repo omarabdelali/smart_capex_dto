@@ -2,12 +2,12 @@
   <section class="maos-history">
     <div class="history-heading">
       <div><h4>Monthly MAOS Counters</h4><p>{{ months.length }} months - {{ sourceDescription }}</p></div>
-      <label>Metric<select v-model="selectedMetric" aria-label="MAOS metric"><option v-for="metric in metrics" :key="metric.key" :value="metric.key">{{ metric.label }}</option></select></label>
+      <label>Metric<select v-model="selectedMetric" aria-label="MAOS metric"><option v-for="metric in metrics" :key="metric.key" :value="metric.key" :disabled="selectedSource === 'virtual_cluster' && metric.key !== 'thrp_dl_gb'">{{ metric.label }}</option></select></label>
       <label>Scope<select v-model="selectedSource" aria-label="MAOS scope">
-        <option value="site">Site aggregate</option><option value="tier1">Tier 1 (0-2 km)</option><option value="tier2">Tier 2 (2-5 km)</option><option value="cluster">Total cluster</option><option value="all_scopes">Compare Tier 1 / Tier 2 / cluster</option><option value="all_cells">Individual cells</option><option value="added_cells">Added cells only</option>
+        <option value="site">Site aggregate</option><option value="tier1">{{ labelFor("tier1") }}</option><option value="tier2">{{ labelFor("tier2") }}</option><option value="cluster">Real DBSCAN cluster</option><option value="virtual_cluster">Virtual sampled traffic</option><option value="distance_0_2">0-2 km</option><option value="distance_2_5">2-5 km</option><option value="distance_5_10">5-10 km</option><option value="all_scopes">Compare Tier 1 / Tier 2 / cluster</option><option value="all_cells">Individual cells</option><option value="added_cells">Added cells only</option>
       </select></label>
     </div>
-    <p class="scope-note">Ratios use sums of paired source counters, not averages of cell ratios. A zero denominator or missing counters leaves a gap. Tier 1/2 exclude this site; total cluster includes it. Monthly charts use current geographic membership.</p>
+    <p class="scope-note">Ratios use sums of paired source counters, not averages of cell ratios. A zero denominator or missing counters leaves a gap. Tier 1/2 exclude this site; total cluster includes it. Monthly charts use the labelled current membership. Virtual scope contains a traffic sample only; a noise site has no real cluster.</p>
     <p v-if="!hasMetricData" class="no-data">No available values for {{ activeMetric.label }} in this scope. Counters may be missing or the denominator may be zero; measured zero is retained.</p>
     <div v-else class="chart-frame"><canvas ref="canvas" role="img" :aria-label="`${activeMetric.label} monthly values`"></canvas></div>
     <details v-if="months.length" class="monthly-values"><summary>Monthly values</summary><div class="table-scroll"><table><thead><tr><th>Month</th><th v-for="series in activeSeries" :key="series.key">{{ series.label }}</th></tr></thead><tbody><tr v-for="month in months" :key="month"><th>{{ month }}</th><td v-for="series in activeSeries" :key="series.key">{{ display(series.records.find(row => row.month === month)?.[selectedMetric]) }}</td></tr></tbody></table></div></details>
@@ -38,13 +38,15 @@ export default {
       {key:'cell_availability_pct',label:'Cell availability (%)'},
       {key:'thrp_dl_gb',label:'Downlink traffic (GB)'}
     ];
+    function labelFor(key){ return props.scopes[key]?.label || scopeLabels[key] || key; }
+    watch(selectedSource,value=>{if(value==='virtual_cluster')selectedMetric.value='thrp_dl_gb';});
     const activeMetric=computed(()=>metrics.find(m=>m.key===selectedMetric.value)||metrics[0]);
     const activeSeries=computed(()=>{
       if(selectedSource.value==='all_cells'||selectedSource.value==='added_cells'){
         return props.cellRecords.filter(cell=>selectedSource.value!=='added_cells'||cell.is_added).map((cell,index)=>({key:cell.cell_name,label:cell.cell_name+' ('+cell.technology+')',records:cell.records,color:cell.is_added?'#dc2626':`hsl(${(index*67)%360} 58% 45%)`}));
       }
-      const keys=selectedSource.value==='all_scopes'?['tier1','tier2','cluster']:[selectedSource.value];
-      return keys.map((key,index)=>({key,label:scopeLabels[key],records:key==='site'?props.records:(props.scopes[key]?.records||[]),color:['#2563eb','#d97706','#059669'][index]}));
+      const keys=selectedSource.value==='all_scopes'?['tier1','tier2',props.scopes.virtual_cluster?.site_count ? 'virtual_cluster' : 'cluster']:[selectedSource.value];
+      return keys.map((key,index)=>({key,label:labelFor(key),records:key==='site'?props.records:(props.scopes[key]?.records||[]),color:['#2563eb','#d97706','#059669'][index]}));
     });
     const months=computed(()=>{
       const known=[...new Set(activeSeries.value.flatMap(s=>s.records.map(row=>row.month)))].sort();
@@ -55,7 +57,7 @@ export default {
       return result;
     });
     const hasMetricData=computed(()=>activeSeries.value.some(s=>s.records.some(row=>row[selectedMetric.value]!=null)));
-    const sourceDescription=computed(()=>selectedSource.value==='all_scopes'?'separate geographic scope totals':scopeLabels[selectedSource.value]||'cell series');
+    const sourceDescription=computed(()=>selectedSource.value==='all_scopes'?'separate geographic scope totals':labelFor(selectedSource.value)||'cell series');
     function display(value){return value==null?'Unavailable':Number(value).toLocaleString(undefined,{maximumSignificantDigits:6})}
     async function renderChart(){
       const request=++renderRequest;
@@ -67,7 +69,7 @@ export default {
     onMounted(renderChart);
     watch(()=>[props.records,props.cellRecords,props.scopes,selectedMetric.value,selectedSource.value],renderChart,{deep:true,flush:'post'});
     onBeforeUnmount(()=>{renderRequest++;if(chart)chart.destroy()});
-    return {canvas,selectedMetric,selectedSource,metrics,activeMetric,activeSeries,months,hasMetricData,sourceDescription,display};
+    return {labelFor,canvas,selectedMetric,selectedSource,metrics,activeMetric,activeSeries,months,hasMetricData,sourceDescription,display};
   }
 };
 </script>

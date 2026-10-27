@@ -140,6 +140,8 @@
       <div v-if="error" class="error">{{ error }}</div>
     </div>
 
+    <div v-if="selectedSiteId && linkStatus" class="map-link-status" role="status">{{ linkStatus }}</div>
+
     <!-- Leaflet map -->
     <div id="cluster-map" ref="mapContainer">
       <!-- Elevation legend overlay -->
@@ -380,32 +382,28 @@ export default {
       return true;
     };
 
-    const distanceMeters = (a, b) => {
-      const toRad = value => value * Math.PI / 180;
-      const dLat = toRad(b[1] - a[1]);
-      const dLon = toRad(b[0] - a[0]);
-      const lat1 = toRad(a[1]);
-      const lat2 = toRad(b[1]);
-      const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-      return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-    };
-
-    const showNeighborLinks = (selected, features) => {
+    let linkRequest = 0;
+    const linkStatus = ref('');
+    const showNeighborLinks = async selected => {
+      const request = ++linkRequest;
       neighborLayer.value.clearLayers();
-      const origin = selected.geometry.coordinates;
-      const neighbors = features.map(candidate => ({
-        feature: candidate,
-        distance: distanceMeters(origin, candidate.geometry.coordinates)
-      })).filter(item => item.feature.properties.site_id !== selected.properties.site_id && item.distance <= 3000)
-        .sort((a, b) => a.distance - b.distance).slice(0, 30);
-
-      neighbors.forEach(({ feature: candidate, distance }) => {
-        const target = candidate.geometry.coordinates;
-        L.polyline([[origin[1], origin[0]], [target[1], target[0]]], {
-          color: '#2563eb', weight: 1.5, opacity: 0.65, dashArray: '5, 5'
-        }).bindTooltip(`${candidate.properties.site_name} · ${(distance / 1000).toFixed(2)} km`)
-          .addTo(neighborLayer.value);
-      });
+      linkStatus.value = 'Loading current neighborhood links...';
+      try {
+        const { data } = await axios.get(`${API_BASE_URL}/sites/${selected.properties.site_id}/map-links/`);
+        if (request !== linkRequest || selectedSiteId.value !== String(selected.properties.site_id)) return;
+        const origin = selected.geometry.coordinates;
+        data.members.forEach(member => {
+          L.polyline([[origin[1], origin[0]], [member.latitude, member.longitude]], {
+            color: member.tier === 'tier1' ? '#2563eb' : '#ea580c',
+            weight: 2, opacity: 0.75, dashArray: member.tier === 'tier1' ? null : '5, 5',
+            className: `neighborhood-link ${member.tier}`
+          }).bindTooltip(`${member.site_name} - ${data.labels[member.tier]} - ${(member.distance_m / 1000).toFixed(2)} km`)
+            .addTo(neighborLayer.value);
+        });
+        linkStatus.value = `Current ${data.link_scope === 'virtual_cluster' ? 'virtual members' : 'tier neighbors'} (${data.cutoff}): ${data.members.length}. Blue: ${data.labels.tier1}; orange dashed: ${data.labels.tier2}.`;
+      } catch (e) {
+        if (request === linkRequest) linkStatus.value = 'Neighborhood links could not load. Select the site to retry.';
+      }
     };
 
     const markSelectedMarker = layer => {
@@ -427,11 +425,13 @@ export default {
       selectedSearchQuery.value = searchQuery.value;
       controlsOpen.value = false;
       markSelectedMarker(layer);
-      showNeighborLinks(feature, allFeatures);
+      showNeighborLinks(feature);
       nextTick(() => map.value?.invalidateSize({ pan: false }));
     };
 
     const closeSiteDetails = () => {
+      ++linkRequest;
+      linkStatus.value = '';
       selectedSiteId.value = null;
       selectedSearchQuery.value = '';
       selectedMarker?.getElement?.()?.classList.remove('site-marker-selected');
@@ -499,6 +499,8 @@ export default {
       }
 
       // Clear existing markers
+      ++linkRequest;
+      linkStatus.value = '';
       sitesLayer.value.clearLayers();
       neighborLayer.value.clearLayers();
       selectedMarker = null;
@@ -731,6 +733,7 @@ export default {
       controlsOpen,
       selectedSiteId,
       selectedSearchQuery,
+      linkStatus,
       inspectorWidth,
       apiBaseUrl,
       demLayers,
@@ -754,6 +757,8 @@ export default {
 </script>
 
 <style scoped>
+.map-link-status { position:absolute; bottom:28px; left:340px; z-index:800; max-width:calc(100% - 370px); background:white; padding:8px 12px; border-radius:6px; font-size:12px; box-shadow:0 1px 5px #0003; pointer-events:none; }
+@media (max-width:1024px) { .map-link-status { left:10px; max-width:calc(100% - 20px); bottom:18px; } }
 .cluster-map-container {
   position: relative;
   display: flex;

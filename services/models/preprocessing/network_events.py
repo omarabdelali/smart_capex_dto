@@ -2,14 +2,36 @@
 from collections import Counter, defaultdict
 from datetime import date
 from hashlib import sha256
+from functools import lru_cache
+import json
 import math
+from pathlib import Path
 from django.db import transaction
 from django.db.models import Min
 from core.models import Cell, MAOSMonthlyKPI, RadioNetworkEvent, Site
 
-VERSION = 'positive-traffic-monthly-v2'
+VERSION = 'positive-traffic-sustained-v3'
 ADDITION_TYPES = ('SITE_ADDED', 'TECHNOLOGY_ADDED', 'FREQUENCY_BAND_ADDED', 'CELL_ADDED')
 PRB_BANDWIDTH = {25:5, 50:10, 75:15, 100:20}
+
+
+@lru_cache(maxsize=1)
+def event_rules():
+    rules = json.loads((Path(__file__).resolve().parents[3] / 'config/event_rules.json').read_text(encoding='utf-8'))
+    if rules['bandwidth_confirmation_months'] < 2 or rules['effect_start_offset'] != 1:
+        raise ValueError('Bandwidth confirmation needs >=2 months and complete effects must start at +1.')
+    return rules
+
+
+def descriptive_event_label(kind, technologies=(), bands=(), old=None, new=None):
+    if kind == 'TECHNOLOGY_ADDED':
+        return '/'.join(sorted(technologies)) + '_ADDED'
+    if kind == 'FREQUENCY_BAND_ADDED':
+        return '/'.join(sorted(bands)) + '_ADDED'
+    if kind in ('BANDWIDTH_UPGRADE', 'BANDWIDTH_DOWNGRADE') and old is not None and new is not None:
+        direction = 'upgrade' if new > old else 'downgrade'
+        return f'bandwidth_{old:g}_to_{new:g}_{direction}'
+    return kind
 
 
 def bandwidth_from_prb(value):
@@ -23,9 +45,15 @@ def next_month(month):
 
 
 def analyze_cell(rows, technology, data_start):
-    """Chronological tuples (month, DL bits, PRBs); gaps never date a change."""
+    """Traffic dates activation; consecutive mapped runs confirm bandwidth shifts.
+
+    A rejected one-month spike cannot create a reverse event on return to the
+    accepted state. Gaps/unmapped values start a new segment, so unknown months
+    cannot confirm persistence. Confirmation is recorded separately from onset.
+    """
     activation, evidence, saw_zero = None, 'no_positive_traffic', False
-    previous, pending, changes, skipped = None, None, [], 0
+    segments, segment, run = [], [], []
+    previous, changes, skipped = None, [], 0
     for month,traffic,prbs in rows:
         positive = traffic is not None and traffic>0
         if positive and activation is None:
@@ -39,23 +67,58 @@ def analyze_cell(rows, technology, data_start):
         bw = bandwidth_from_prb(prbs)
         contiguous = previous is not None and next_month(previous[0])==month
         if bw is None or not contiguous:
-            if previous is not None and bw is not None and bw!=previous[1]:
+            if previous is not None and bw is not None and bw != previous[1]:
                 skipped+=1
-            pending=None
-        elif bw!=previous[1]:
-            pending=(previous[1],bw,month,previous[0]) if previous[2] else None
-        if pending and positive and bw==pending[1]:
-            old,new,prb_month,old_month=pending
-            changes.append({'event_type':'BANDWIDTH_UPGRADE' if new>old else 'BANDWIDTH_DOWNGRADE',
-                'effective_date':month,'previous_bandwidth_mhz':old,'new_bandwidth_mhz':new,
-                'details':{'first_changed_prb_month':prb_month.isoformat(),
-                    'previous_prb_month':old_month.isoformat(),'available_prbs':prbs,
-                    'date_basis':'first_positive_traffic_at_new_prb_bandwidth',
-                    'configuration_source':'monthly_prb_inference','prb_tolerance':5}})
-            pending=None
+            if segment:
+                segments.append(segment)
+            segment, run = [], []
+        if bw is not None:
+            if not run or run[-1][3] != bw:
+                run = []
+                segment.append(run)
+            run.append((month, traffic, prbs, bw))
         previous=(month,bw,positive) if bw is not None else None
+    if segment:
+        segments.append(segment)
+    required = event_rules()['bandwidth_confirmation_months']
+    rejected = unconfirmed = 0
+    for runs in segments:
+        reference = runs[0]
+        for candidate in runs[1:]:
+            old, new = reference[-1][3], candidate[-1][3]
+            if new == old:
+                reference = reference + candidate
+                continue
+            if len(candidate) < required:
+                if candidate is runs[-1]:
+                    unconfirmed += 1
+                else:
+                    rejected += 1
+                continue
+            old_active = [r for r in reference if r[1] is not None and r[1] > 0]
+            new_active = [r for r in candidate if r[1] is not None and r[1] > 0]
+            if new_active and old_active:
+                effective = new_active[0]
+                confirmation = max(candidate[required - 1][0], effective[0])
+                kind = 'BANDWIDTH_UPGRADE' if new > old else 'BANDWIDTH_DOWNGRADE'
+                changes.append({'event_type': kind, 'effective_date': effective[0],
+                    'previous_bandwidth_mhz': old, 'new_bandwidth_mhz': new,
+                    'details': {'label': descriptive_event_label(kind, old=old, new=new),
+                        'first_changed_prb_month': candidate[0][0].isoformat(),
+                        'previous_prb_month': old_active[-1][0].isoformat(), 'available_prbs': effective[2],
+                        'confirmation_month': confirmation.isoformat(), 'confirmation_months_required': required,
+                        'confirmation_observation_months': [r[0].isoformat() for r in candidate if r[0] <= confirmation],
+                        'confirmed_at': next_month(confirmation).isoformat(),
+                        'date_basis': 'first_positive_traffic_in_sustained_new_prb_state',
+                        'configuration_source': 'monthly_prb_inference', 'prb_tolerance': 5,
+                        'effect_start_offset': event_rules()['effect_start_offset']}})
+            # An observed positive new state establishes inventory even without
+            # a positive old state; unknown old operation cannot invent an event.
+            if new_active:
+                reference = candidate
     return {'activation':activation,'evidence':evidence,'bandwidth_changes':changes,
-            'skipped_gap_transitions':skipped}
+            'skipped_gap_transitions':skipped, 'rejected_transient_bandwidth_runs': rejected,
+            'unconfirmed_bandwidth_runs': unconfirmed}
 
 
 def addition(kind,cells,states):
@@ -65,10 +128,13 @@ def addition(kind,cells,states):
         'effective_date':max(states[c.pk]['activation'] for c in cells),
         'details':{'cell_ids':sorted(activations),'cell_activation_months':activations,
             'technologies':techs,'bands':sorted({c.band for c in cells}),
-            'label':'/'.join(techs)+'_ADDED' if kind=='TECHNOLOGY_ADDED' else kind,
+            'label':descriptive_event_label(kind, technologies=techs, bands={c.band for c in cells}),
             'date_basis':'last_required_cell_first_positive_traffic',
             'membership_source':'current_cell_plan','configuration_source':'current_snapshot_only',
             'action_boundary':'activation_month',
+            'completion_scope':'activation_month_cohort',
+            'later_additions':'separate_monthly_actions',
+            'effect_start_offset':event_rules()['effect_start_offset'],
             'activation_evidence':{c.cell_id:states[c.pk]['evidence'] for c in cells}}}
 
 
@@ -98,7 +164,7 @@ def classify_additions(cells,states,data_start):
         if tech_members:
             events.append(addition('TECHNOLOGY_ADDED',tech_members,states))
             consumed.update(c.pk for c in tech_members)
-        band_key=lambda c:(c.technology,c.band,c.frequency)
+        band_key=lambda c:(c.technology,c.band)
         prior_bands={band_key(c) for c in prior+unknown}
         new_bands=defaultdict(list)
         for c in members:
@@ -143,6 +209,9 @@ def detect_events():
         'detected_site_technologies':sum(e['event_type']=='TECHNOLOGY_ADDED' for e in events),
         'event_counts':dict(Counter(e['event_type'] for e in events)),
         'skipped_gap_bandwidth_transitions':sum(s['skipped_gap_transitions'] for s in states.values()),
+        'rejected_transient_bandwidth_runs':sum(s['rejected_transient_bandwidth_runs'] for s in states.values()),
+        'unconfirmed_bandwidth_runs':sum(s['unconfirmed_bandwidth_runs'] for s in states.values()),
+        'event_rules':event_rules(),
         'activation_evidence_counts':dict(Counter(s['evidence'] for s in states.values())),
         'data_start':start}
     return cells,states,events,stats
@@ -175,7 +244,10 @@ def detect_and_save_events():
 def event_payload(event):
     return {'event_key':event.event_key,'event_type':event.event_type,
         'date_precision':'month',
-        'event_label':event.details.get('label',event.event_type),
+        'first_full_effect_month':next_month(event.effective_date).isoformat(),
+        'event_label':event.details.get('label') or descriptive_event_label(event.event_type,
+            technologies=event.details.get('technologies',()), bands=event.details.get('bands',()),
+            old=event.previous_bandwidth_mhz, new=event.new_bandwidth_mhz),
         'launch_date':event.effective_date.isoformat(),'event_date':event.effective_date.isoformat(),
         'configuration_date':event.configuration_date.isoformat() if event.configuration_date else None,
         'previous_bandwidth_mhz':event.previous_bandwidth_mhz,'new_bandwidth_mhz':event.new_bandwidth_mhz,

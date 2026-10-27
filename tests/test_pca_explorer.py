@@ -115,7 +115,7 @@ class ExplorerTests(TestCase):
         data, status = explore({'dataset': 'calculated', 'scope': 'cluster', 'month_to': '2024-01',
                                 'columns': ','.join(metadata()['datasets']['calculated'][i]['key'] for i in range(11))})
         self.assertEqual(status, 200)
-        self.assertEqual(data['count'], 3)
+        self.assertEqual(data['count'], 1)
         row = next(r for r in data['rows'] if r['cluster_id'] == 1)
         self.assertEqual(row['active_users_avg'], 3)
         self.assertEqual(row['thrp_dl_gb'], 3)
@@ -127,7 +127,7 @@ class ExplorerTests(TestCase):
         self.assertEqual(row['dl_packet_delay_ms'], 10)
         self.assertEqual(row['cell_availability_pct'], 99)
         self.assertEqual(row['reporting_cells'], 2)
-        self.assertEqual({r['site_id'] for r in data['rows'] if r['cluster_id'] == -1}, {'c', 'd'})
+        self.assertFalse(any(r['cluster_id']==-1 for r in data['rows']))
 
     def test_missing_zero_and_calculated_value_filter(self):
         data, status = explore({'dataset': 'calculated', 'month_from': '2024-02', 'columns': 'active_users_avg,prb_util_dl_pct',

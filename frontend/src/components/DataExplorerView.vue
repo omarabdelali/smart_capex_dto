@@ -8,14 +8,15 @@
         <label>Site / cell search<input v-model="filters.search" placeholder="Site ID, site name or cell name" /></label>
         <label>Exact site ID<input v-model="filters.site_id" placeholder="All matching sites" /></label>
         <label>Cluster<select aria-label="Cluster" v-model="filters.cluster_id"><option value="">All clusters</option><option v-for="id in catalog?.clusters || []" :key="id" :value="String(id)">{{ id === -1 ? 'Noise sites (-1)' : id }}</option></select></label>
+        <label>Tier scheme<select v-model="filters.tier_scheme" aria-label="Tier scheme"><option value="">All schemes</option><option value="standard">Standard</option><option value="extended">Extended</option></select></label>
         <label>Technology<select aria-label="Technology" v-model="filters.technology"><option value="">All technologies</option><option v-for="tech in catalog?.technologies || []" :key="tech">{{ tech }}</option></select></label>
         <label>Cell name / ID<input v-model="filters.cell" placeholder="Optional cell filter" /></label>
         <template v-if="dataset !== 'features'">
           <label>From month<input v-model="filters.month_from" type="month" /></label><label>To month<input v-model="filters.month_to" type="month" /></label>
         </template>
         <label v-else>Profile cutoff (optional)<input v-model="filters.as_of" type="month" /><small>Blank uses each site's event cutoff; current sites use their latest history.</small></label>
-        <label v-if="dataset === 'calculated'">Aggregation<select aria-label="Aggregation" v-model="filters.scope"><option value="cell">Cell</option><option value="site">Site</option><option value="cluster">Cluster</option><option value="tier1">Tier 1 · 0–2 km</option><option value="tier2">Tier 2 · 2–5 km</option></select></label>
-        <label v-if="dataset === 'calculated' && ['tier1', 'tier2'].includes(filters.scope)">Tier origin site ID<input v-model="filters.origin_site_id" required placeholder="Required for distance tiers" /></label>
+        <label v-if="dataset === 'calculated'">Aggregation<select aria-label="Aggregation" v-model="filters.scope"><option value="cell">Cell</option><option value="site">Site</option><option value="cluster">Cluster</option><option value="tier1">Tier 1 (origin scheme)</option><option value="tier2">Tier 2 (origin scheme)</option><option value="virtual_cluster">Virtual traffic sample</option><option value="distance_0_2">0-2 km</option><option value="distance_2_5">2-5 km</option><option value="distance_5_10">5-10 km</option></select></label>
+        <label v-if="dataset === 'calculated' && ['tier1','tier2','virtual_cluster','distance_0_2','distance_2_5','distance_5_10'].includes(filters.scope)">Tier origin site ID<input v-model="filters.origin_site_id" required placeholder="Required for distance tiers" /></label>
       </div>
       <details open class="column-picker"><summary>Columns · {{ columns.length }} selected</summary>
         <input v-model="columnSearch" type="search" placeholder="Find a counter, KPI or feature" aria-label="Find columns" />
@@ -27,7 +28,7 @@
         <label v-if="filters.value_field && !['missing', 'present'].includes(filters.value_op)">Value<input v-model="filters.value" :type="valueType === 'categorical' ? 'text' : 'number'" step="any" required /></label>
       </div>
       <div class="actions"><button type="submit" :disabled="loading || !catalog || !columns.length">{{ loading ? 'Loading data…' : 'Apply filters' }}</button><label>Rows per page<select aria-label="Rows per page" v-model="pageSize"><option :value="25">25</option><option :value="50">50</option><option :value="100">100</option><option :value="200">200</option></select></label></div>
-      <p>{{ catalog?.note }}</p><p v-if="dataset === 'calculated'">Filters apply before aggregation. Ratios pool paired raw counters. Active users are summed. Tier scopes exclude the origin site; noise sites stay separate in cluster totals.</p>
+      <p>{{ catalog?.note }}</p><p v-if="dataset === 'calculated'">Filters apply before aggregation. Ratios pool paired raw counters. Active users are summed. Tier scopes exclude the origin site; noise sites have no real cluster total. Virtual traffic is a sample; tiers follow the origin scheme.</p>
       <p v-if="dataset === 'features'">Technology and cell filters select whole-site profiles. Geography and population use the approved static assumption. Performance uses only months before the cutoff. Filtering feature values can take longer because profiles must be calculated.</p>
     </form>
     <p v-if="error" role="alert" class="error">{{ error }}</p><p v-if="stale && results" role="status" class="stale">Filters or columns changed. Apply filters to update the table.</p>
@@ -50,13 +51,14 @@ import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
 const API = 'http://localhost:8000/api';
 const catalog = ref(null), metadataError = ref(''), error = ref(''), loading = ref(false), results = ref(null);
 const dataset = ref('raw'), columns = ref([]), columnSearch = ref(''), pageSize = ref(50), applied = ref('');
-const filters = reactive({ search: '', site_id: '', cluster_id: '', technology: '', cell: '', month_from: '', month_to: '', as_of: '', scope: 'site', origin_site_id: '', value_field: '', value_op: 'gte', value: '' });
+const filters = reactive({ search: '', site_id: '', cluster_id: '', technology: '', tier_scheme: '', cell: '', month_from: '', month_to: '', as_of: '', scope: 'site', origin_site_id: '', value_field: '', value_op: 'gte', value: '' });
 const fields = computed(() => catalog.value?.datasets?.[dataset.value] || []);
 const visibleFields = computed(() => fields.value.filter(f => `${f.key} ${f.label}`.toLowerCase().includes(columnSearch.value.toLowerCase())));
 const valueType = computed(() => fields.value.find(f => f.key === filters.value_field)?.type);
 const signature = computed(() => JSON.stringify([dataset.value, columns.value, filters, pageSize.value]));
 const stale = computed(() => applied.value !== signature.value);
 let requestId = 0;
+watch(() => filters.scope, value => { if (value === 'virtual_cluster') columns.value = ['thrp_dl_gb']; });
 watch(dataset, () => { columns.value = fields.value.slice(0, 6).map(f => f.key); filters.value_field = ''; columnSearch.value = ''; });
 watch(valueType, value => { if (value === 'categorical' && ['gte', 'lte'].includes(filters.value_op)) filters.value_op = 'eq'; });
 async function loadMetadata() {
@@ -76,7 +78,7 @@ async function loadRows(page = 1) {
   finally { if (token === requestId) loading.value = false; }
 }
 const tableColumns = computed(() => {
-  const identity = results.value?.dataset === 'features' ? ['site_id', 'site_name', 'cluster_id', 'as_of', 'event_date'] : ['month', 'site_id', 'site_name', 'cluster_id', 'cell', 'technology', 'reporting_cells', 'reporting_sites'];
+  const identity = results.value?.dataset === 'features' ? ['site_id', 'site_name', 'cluster_id', 'tier_scheme', 'as_of', 'event_date'] : ['month', 'site_id', 'site_name', 'cluster_id', 'cell', 'technology', 'reporting_cells', 'reporting_sites'];
   return [...new Set([...identity.filter(key => results.value?.rows.some(row => row[key] != null)), ...(results.value?.columns || [])])];
 });
 function fieldInfo(key) { return catalog.value?.datasets?.[results.value?.dataset || dataset.value]?.find(f => f.key === key); }

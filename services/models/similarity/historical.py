@@ -61,9 +61,7 @@ def load_network(cutoff):
     Current coordinates/technology labels identify historical observations;
     coordinates are assumed stable, and no historical heights are inferred.
     """
-    activity = Q()
-    for field in ('thrp_bits_dl', 'active_users_avg', 'traffic_user_avg', 'cqi_avg'):
-        activity |= Q(**{field+'__gt': 0})
+    activity = Q(cell__technology='4G',thrp_bits_dl__gt=0)
     rows = list(MAOSMonthlyKPI.objects.filter(
         month_date__gte=month_offset(cutoff, -3), month_date__lt=cutoff,
     ).filter(activity).values('cell__site__site_id', 'cell__technology', 'month_date').annotate(
@@ -87,56 +85,35 @@ def network_from_rows(sites, rows):
 
 
 def cluster_members(origin, network):
-    """Static site-cluster membership, restricted to pre-cutoff activity evidence."""
-    identifiers=set(Site.objects.filter(cluster_id=origin.cluster_id).values_list('site_id',flat=True)) if origin.cluster_id!=-1 else {origin.site_id}
-    members=[record for key,record in network.items() if key in identifiers and key!=origin.site_id]
+    from services.models.features.neighborhood import inventory
+    if origin.cluster_id == -1:
+        return []
+    groups,by_raw = inventory({})
+    origin_key = by_raw.get(origin.site_id,origin.site_id)
+    members = []
+    for key,row in groups.items():
+        if row['cluster_id']==origin.cluster_id and key!=origin_key and any(raw in network for raw in row['site_ids']):
+            members.append(row)
     members.append({'site_id':origin.site_id,'latitude':origin.latitude,'longitude':origin.longitude})
     return members
 
 
-def context_features(origin, network, cutoff):
-    neighbors = [record for key, record in network.items() if key != origin.site_id]
-    distances = [haversine(origin.latitude, origin.longitude, row['latitude'], row['longitude']) for row in neighbors]
-    # With no evidence the context is unknown; ANP's isolated-site defaults
-    # would otherwise manufacture certainty from an empty observation window.
-    if not neighbors:
-        return {}
-    result = {
-        'dist_nearest_site_m': min(distances),
-        'neighbor_avg_antenna_height_m': None,
-    }
-    for radius in (1, 2, 3):
-        result[f'n_sites_{radius}km'] = sum(d <= radius*1000 for d in distances)
-    for tech in ('2G', '3G', '4G'):
-        result[f'n_{tech.lower()}_sites_2km'] = (
-            sum(d <= 2000 and tech in row['technologies'] for row, d in zip(neighbors, distances))
-            if any(tech in row['technologies'] for row in neighbors) else None
-        )
-    result.update(ANPComputer().compute_anp(
-        origin.latitude, origin.longitude,
-        [(row['latitude'], row['longitude']) for row in neighbors], distances,
-    ))
-    group = cluster_members(origin, network)
-    if not group:
-        group = [{'site_id': origin.site_id, 'latitude': origin.latitude, 'longitude': origin.longitude}]
-    project = Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
-    points = [Point(*project.transform(row['longitude'], row['latitude'])) for row in group]
-    hull = MultiPoint(points).convex_hull
-    area = hull.area if hull.area > 0 else hull.buffer(100).area
-    x, y = project.transform(origin.longitude, origin.latitude)
-    result.update({'cluster_id': None, 'cluster_size': len(group),
-                   'cluster_density_sites_per_km2': len(group)/(area/1e6),
-                   'dist_to_cluster_centroid_m': Point(x,y).distance(MultiPoint(points).centroid)})
-    latest = month_offset(cutoff, -1)
-    for output, field, divisor in (('cluster_avg_traffic_gb', 'traffic', 8e9), ('cluster_avg_users', 'users', 1)):
-        values = []
-        for row in group:
-            # Origin is the intervention, not a pre-existing recipient.
-            if row['site_id'] == origin.site_id:
-                continue
-            data = network.get(row['site_id'], {}).get('monthly', {}).get(latest, {}).get(field, [])
-            if data:
-                values.append(sum(data)/divisor)
-        result[output] = sum(values)/len(values) if values else None
-    return {key: (None if isinstance(value, (float, np.floating)) and not np.isfinite(value) else value)
-            for key, value in result.items()}
+def context_features(origin, network, cutoff, cache=None):
+    from services.models.features.neighborhood import neighborhood, scheme
+    context = neighborhood(origin,cutoff,cache)
+    neighbors = context['scopes']['tier1']+context['scopes']['tier2']
+    result = {'tier_scheme':context['tier_scheme'],'dist_nearest_site_m':context['nearest_eligible_site_m']}
+    if context['nearest_eligible_site_m'] is None:
+        return result
+    distances = [row['distance_m'] for row in neighbors]
+    for radius in (1,2,3):
+        result[f'n_sites_{radius}km'] = sum(d<=radius*1000 for d in distances)
+    for tech in ('2G','3G','4G'):
+        result[f'n_{tech.lower()}_sites_2km'] = sum(row['distance_m']<=2000 for row in neighbors) if tech=='4G' else None
+    result.update(ANPComputer(tier_scheme=context['tier_scheme']).compute_anp(
+        origin.latitude,origin.longitude,[(r['latitude'],r['longitude']) for r in neighbors],distances))
+    for index in (1,2):
+        if not result[f'n_tier{index}']:
+            result[f't{index}_nearest_m']=None
+            result[f'avg_neighbor_dist_t{index}_m']=None
+    return result

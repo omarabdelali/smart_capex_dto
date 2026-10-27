@@ -92,6 +92,7 @@ class GowerDistance:
     ]
     
     CATEGORICAL_FEATURES = [
+        'tier_scheme',
         'terrain_relief_class',
         'dominant_road_class',
         # Configuration
@@ -147,7 +148,7 @@ class GowerDistance:
         if feature_weights:
             supported_features.update(feature_weights)
         all_features = supported_features.intersection(x1).intersection(x2)
-        all_features -= {'site_id','cluster_id','cluster_avg_users'}
+        all_features -= {'site_id','cluster_id','cluster_avg_users','tier_scheme'}
         
         for feature in all_features:
             if self._get_feature_group(feature) == 'road_context' and (not feature_weights or feature not in feature_weights):

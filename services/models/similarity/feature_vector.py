@@ -108,7 +108,7 @@ def build_site_similarity_vector(site, as_of_date=None, snapshot_cache=None, all
         'congestion_hours_per_day',
     )))
 
-    vector.update(population_features(site.latitude, site.longitude))
+    vector.update(population_features(site.latitude, site.longitude, tier_scheme="extended" if site.cluster_id==-1 else "standard"))
     vector['population_quality'] = vector.pop('quality', None)
     monthly_rows = list(history.filter(month_date__gte=month_offset(cutoff, -3), month_date__lt=cutoff).values('month_date').annotate(
         **monthly_annotations(),
@@ -158,8 +158,8 @@ def build_site_similarity_vector(site, as_of_date=None, snapshot_cache=None, all
     if cutoff not in cache:
         cache[cutoff] = load_network(cutoff)
     vector.update(dict.fromkeys(context_names))
-    vector.update(context_features(site, cache[cutoff], cutoff))
-    vector.update(user_context_values(site, cutoff, cache[cutoff]))
+    vector.update(context_features(site, cache[cutoff], cutoff, cache))
+    vector.update(user_context_values(site, cutoff, cache[cutoff], cache))
     # Legacy records have no verified measurement window; never use their
     # default zeros or undated values as historical model inputs.
     vector.update(dict.fromkeys((

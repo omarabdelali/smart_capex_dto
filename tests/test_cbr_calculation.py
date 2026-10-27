@@ -2,7 +2,7 @@ from datetime import date
 from unittest.mock import patch
 from django.test import SimpleTestCase
 from services.models.prediction.cbr_impact import (
-    _baseline_scope, _cohort_observed, _group_series, _prediction_values,
+    _baseline_scope, _cohort_observed, _group_series, _prediction_values, _event_group_responses, _predict_delta,
 )
 
 
@@ -31,7 +31,21 @@ class CBRCohortTests(SimpleTestCase):
         self.assertIsNone(point['observed'])
         self.assertEqual(point['observed_sites'], 1)
         self.assertEqual(point['eligible_sites'], 2)
-        self.assertEqual(point['predicted'], 204)
+        self.assertIsNone(point['predicted'])
+        self.assertTrue(point['is_partial_event_month'])
+        self.assertFalse(point['effect_eligible'])
+        month_one = next(p for p in points if p['offset']==1)
+        self.assertEqual(month_one['predicted'],204)
+        self.assertTrue(month_one['effect_eligible'])
+
+    def test_event_month_is_context_only_and_effects_start_at_plus_one(self):
+        data = {'a': {date(2025,3,1): {'traffic_bits': 10*8e9},
+                      date(2025,4,1): {'traffic_bits': 1000*8e9},
+                      date(2025,5,1): {'traffic_bits': 15*8e9}}}
+        outcomes, _ = _event_group_responses(['a'],date(2025,4,1),data)
+        self.assertNotIn(0,outcomes['downlink_traffic_gb'])
+        self.assertEqual(outcomes['downlink_traffic_gb'][1],5)
+        self.assertEqual(_predict_delta([],{},'tier1','downlink_traffic_gb',0),(None,None,None,0))
 
     def test_absolute_prediction_and_interval_respect_physical_bounds(self):
         self.assertEqual(_prediction_values(100,-200,-300,-100,'downlink_traffic_gb'), (0,-100,0,0))

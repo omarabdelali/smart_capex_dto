@@ -43,6 +43,15 @@ def verify():
             page.get_by_role('button', name='Predict impact', exact=True).click()
         result = received.value.json()
         assert received.value.status == 200
+        assert result['effect_start_offset'] == 1
+        expect(page.locator('.partial-month-note')).to_contain_text('Month 0 is a partial activation month')
+        for series in [scope['series'] for scope in result['scopes'].values()] + [site['series'] for site in result['site_predictions']]:
+            for points in series.values():
+                for point in points:
+                    if point['offset'] == 0:
+                        assert point['is_partial_event_month'] and not point['effect_eligible']
+                        assert all(point[key] is None for key in ('predicted','predicted_impact','lower_95','upper_95'))
+                        assert point['analog_cases'] == 0
         expect(page.locator('.cbr aside')).to_be_visible()
         expect(page.locator('.population-note')).to_be_visible()
         report['cutoff'] = result['prediction_cutoff']
@@ -73,6 +82,8 @@ def verify():
                     assert plotted['data'][3] == [p['upper_95'] for p in expected]
                     assert not any(plotted['gaps'])
                     assert 200 <= plotted['height'] <= 500
+                    partial_index = next(i for i,p in enumerate(expected) if p['offset']==0)
+                    assert plotted['data'][1][partial_index] is None
                 tested.append(f'{scope}/{metric}')
         scopes.select_option('tier1')
         kpis.select_option('downlink_traffic_gb')
@@ -83,6 +94,7 @@ def verify():
         expect(page.locator('.chart-frame canvas')).to_be_visible()
         page.screenshot(path=str(output/'cbr-mobile.png'))
         report['checks'].append('CBR API and charts checked across four scopes and five KPIs; arrays, gaps, bounds and chart height match')
+        report['checks'].append('Partial event month has observed context only; estimates, impacts and intervals start at +1')
         report['tested_chart_combinations'] = tested
         assert not report['errors'], report['errors']
         browser.close()

@@ -9,7 +9,7 @@ def pair_weights(distance, query, candidate, selected, mode):
     if mode not in WEIGHTING_MODES:
         raise ValueError('Unknown weighting mode')
     common = [f for f in distance.NUMERIC_FEATURES+distance.CATEGORICAL_FEATURES
-              if f not in ('site_id','cluster_id','cluster_avg_users')
+              if f not in ('site_id','cluster_id','cluster_avg_users','tier_scheme')
               and not distance._is_missing(query.get(f)) and not distance._is_missing(candidate.get(f))]
     roads_compatible = bool(query.get('road_context_signature')) and query.get('road_context_signature') == candidate.get('road_context_signature')
     common = [f for f in common if f not in ROAD_FIELDS or (f in selected and roads_compatible)]

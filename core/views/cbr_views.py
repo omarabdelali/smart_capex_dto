@@ -13,7 +13,7 @@ class CBRImpactPredictionView(APIView):
         site_id = request.query_params.get('site_id', '').strip()
         if not site_id:
             return Response({'error': 'site_id is required'}, status=status.HTTP_400_BAD_REQUEST)
-        result = build_cbr_impact_prediction(site_id)
+        result = build_cbr_impact_prediction(site_id,event_key=request.query_params.get('event_key'))
         if result is None:
             return Response({'error': f'Site {site_id} was not found'}, status=status.HTTP_404_NOT_FOUND)
         if result.get('error'):

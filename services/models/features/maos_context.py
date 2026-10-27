@@ -11,7 +11,7 @@ from services.utils.geo_utils import haversine
 SCOPES = ('tier1','tier2','cluster')
 USER_CONTEXT_FIELDS = tuple(f'{scope}_{metric}' for scope in SCOPES for metric in USER_RATIOS)
 USER_CONTEXT_LABELS = {f'{scope}_{metric}': (f'{label} - {name}', 'ratio')
-    for scope,label in [('tier1','Tier 1 (0-2 km)'),('tier2','Tier 2 (2-5 km)'),('cluster','Total cluster')]
+    for scope,label in [('tier1','Tier 1 (origin scheme)'),('tier2','Tier 2 (origin scheme)'),('cluster','Total cluster')]
     for metric,name in [('edge_user_share','Edge user share'),('edge_user_peak_ratio','Edge user peak ratio'),('lowlatency_user_share','Low-latency user share')]}
 
 
@@ -50,23 +50,13 @@ def ratio_support(totals):
     return support
 
 
-def scope_members(site, network=None):
-    """Current membership for descriptive charts; reconstructed for profiles."""
-    rows = list(network.values()) if network is not None else list(Site.objects.values('site_id','latitude','longitude','cluster_id'))
-    result = {'site':[site.site_id],'tier1':[],'tier2':[],'cluster':[]}
-    for row in rows:
-        if row['site_id'] != site.site_id:
-            distance = haversine(site.latitude,site.longitude,row['latitude'],row['longitude'])
-            if distance <= 2000:
-                result['tier1'].append(row['site_id'])
-            elif distance <= 5000:
-                result['tier2'].append(row['site_id'])
-        if network is None and site.cluster_id != -1 and row.get('cluster_id') == site.cluster_id:
-            result['cluster'].append(row['site_id'])
-    if network is not None:
-        result['cluster'] = list(Site.objects.filter(cluster_id=site.cluster_id).values_list('site_id',flat=True)) if site.cluster_id!=-1 else [site.site_id]
-    if not result['cluster']:
-        result['cluster'] = [site.site_id]  # Noise sites are independent singletons.
+def scope_members(site, network=None, cutoff=None, cache=None):
+    from .neighborhood import neighborhood, raw_ids, inventory
+    context = neighborhood(site, cutoff=cutoff, cache=cache)
+    result = {'site':[site.site_id], **{key:raw_ids(members) for key,members in context['scopes'].items()}}
+    if site.cluster_id != -1:
+        groups,_ = inventory(cache if cache is not None else {})
+        result['cluster'] = [key for group in groups.values() if group['cluster_id']==site.cluster_id for key in group['site_ids']]
     return result
 
 
@@ -78,10 +68,10 @@ def default_profile_cutoff(site, latest_month=None):
     return (event or (month_offset(latest,1) if latest else date.today())).replace(day=1)
 
 
-def calculate_user_context(site, cutoff, network=None, totals_by_site=None):
+def calculate_user_context(site, cutoff, network=None, totals_by_site=None, cache=None):
     from services.models.similarity.historical import load_network, month_offset
     network = load_network(cutoff) if network is None else network
-    members = scope_members(site,network)
+    members = scope_members(site,network,cutoff,cache)
     values, support = {}, {}
     for scope in SCOPES:
         if totals_by_site is None:
@@ -96,18 +86,18 @@ def calculate_user_context(site, cutoff, network=None, totals_by_site=None):
                 totals[name] = sum(observed) if observed else None
         values.update({f'{scope}_{key}':value for key,value in user_ratio_values(totals).items()})
         support[scope] = {'site_count':len(members[scope]),'ratios':ratio_support(totals)}
-    return {**values,'profile_as_of_date':cutoff,'support':support}
+    return {**values,'profile_as_of_date':cutoff,'support':{**support,'neighborhood_version':'neighborhood-v1'}}
 
 
-def user_context_values(site, cutoff, network=None):
+def user_context_values(site, cutoff, network=None, cache=None):
     try:
         stored = site.user_context_features
     except ObjectDoesNotExist:
         stored = None
-    if stored is not None and stored.profile_as_of_date == cutoff:
+    if stored is not None and stored.profile_as_of_date == cutoff and stored.support.get('neighborhood_version')=='neighborhood-v1':
         return {**{name:getattr(stored,name) for name in USER_CONTEXT_FIELDS},
                 'user_context_support':stored.support}
-    values = calculate_user_context(site,cutoff,network)
+    values = calculate_user_context(site,cutoff,network,cache=cache)
     return {**{name:values[name] for name in USER_CONTEXT_FIELDS},'user_context_support':values['support']}
 
 
@@ -117,7 +107,7 @@ def save_user_context(site, network_cache=None):
     cache = network_cache if network_cache is not None else {}
     if cutoff not in cache:
         cache[cutoff] = load_network(cutoff)
-    values = calculate_user_context(site,cutoff,cache[cutoff])
+    values = calculate_user_context(site,cutoff,cache[cutoff],cache=cache)
     UserContextFeatures.objects.update_or_create(site=site,defaults=values)
     return values
 
@@ -137,7 +127,7 @@ def backfill_user_context(progress_callback=None):
         cutoff = default_profile_cutoff(site,latest)
         if cutoff not in network_cache:
             network_cache[cutoff] = load_network(cutoff)
-        values = calculate_user_context(site,cutoff,network_cache[cutoff],totals)
+        values = calculate_user_context(site,cutoff,network_cache[cutoff],totals,cache=network_cache)
         available = [name for name in USER_CONTEXT_FIELDS if values[name] is not None]
         report['computed' if available else 'all_unavailable'] += 1
         for name in available:
@@ -158,8 +148,20 @@ def backfill_user_context(progress_callback=None):
 def site_maos_payload(site, added_cells=()):
     if hasattr(site,'_maos_context_payload'):
         return site._maos_context_payload
-    members = scope_members(site)
-    scopes = {key:{'site_count':len(ids),'records':monthly_series(ids)} for key,ids in members.items()}
+    from .neighborhood import neighborhood, raw_ids, current_snapshot, offset, sample_series
+    latest = MAOSMonthlyKPI.objects.aggregate(value=Max('month_date'))['value']
+    cutoff = offset(latest,1) if latest else date.today().replace(day=1)
+    context = neighborhood(site,cutoff,{})
+    members = scope_members(site,cutoff=cutoff)
+    scopes = {key:{'site_count':len(context['scopes'].get(key,[])) if key!='site' else 1,
+        'label':context['labels'].get(key,key), 'records':monthly_series(ids),
+        'tier_scheme':context['tier_scheme'], 'membership_kind':'current', 'membership_cutoff':cutoff.isoformat()}
+        for key,ids in members.items()}
+    if site.cluster_id!=-1:
+        scopes['cluster']['site_count'] += 1
+    scopes['virtual_cluster']['records'] = sample_series(context['vis_members'])
+    scopes['virtual_cluster']['note'] = 'Traffic sample only, at most one location per 30-degree bin; current membership.'
+
     added = {item['cell_name']:item for item in added_cells}
     fields = ('traffic_user_avg','active_users_avg','prb_util_dl_pct','prb_util_ul_pct','rrc_conn_avg','cqi_avg',
               'rsrp_avg_dbm','thrp_bits_dl','dl_throughput_kbps','dl_packet_delay_ms','cell_availability_pct',

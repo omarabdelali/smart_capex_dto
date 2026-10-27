@@ -58,6 +58,9 @@ class HierarchicalFilter:
         Returns:
             List of indices of filtered cases, optionally with filter level (0-3)
         """
+        # This partition must survive every relaxation, including global fallback.
+        query_scheme = query.get('tier_scheme')
+        compatible = [i for i,c in enumerate(candidates) if query_scheme is None or c.get('tier_scheme') == query_scheme]
         # Extract query configuration
         query_event = query.get('event_type', '')
         query_tech = query.get('tech_added', '')
@@ -66,6 +69,8 @@ class HierarchicalFilter:
         # Level 1: event_type match
         level1_indices = []
         for i, candidate in enumerate(candidates):
+            if i not in compatible:
+                continue
             if candidate.get('event_type', '') == query_event:
                 level1_indices.append(i)
         
@@ -104,7 +109,7 @@ class HierarchicalFilter:
         else:
             # Fallback to global model (all cases)
             logger.warning(f"Insufficient cases at level 1. Using global model with {len(candidates)} cases")
-            all_indices = list(range(len(candidates)))
+            all_indices = compatible
             return (all_indices, 0) if return_filter_level else all_indices
     
     def _parse_bands(self, bands_str: str) -> Set[str]:
@@ -166,6 +171,8 @@ class HierarchicalFilter:
         Returns:
             Dictionary with counts at each filter level
         """
+        if query.get('tier_scheme') is not None:
+            candidates=[c for c in candidates if c.get('tier_scheme')==query['tier_scheme']]
         query_event = query.get('event_type', '')
         query_tech = query.get('tech_added', '')
         query_bands = self._parse_bands(query.get('bands_added', ''))
@@ -226,4 +233,5 @@ class HierarchicalFilter:
             3: f"Full hierarchical filter: event '{stats['query_event']}' + tech '{stats['query_tech']}' + bands {stats['query_bands']} → {stats['level3_full_match']} cases."
         }
         
-        return explanations.get(filter_level, f"Used {len(selected_indices)} filtered cases")
+        prefix=f"Tier scheme {query['tier_scheme']} only. " if query.get('tier_scheme') else ''
+        return prefix+explanations.get(filter_level, f"Used {len(selected_indices)} filtered cases")

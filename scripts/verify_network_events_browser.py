@@ -42,9 +42,12 @@ def verify():
                 'BANDWIDTH_DOWNGRADE':'Bandwidth downgrade'}[kind])
             expect(panel).to_contain_text(f"{label} · effective {event['event_date']}")
             if event['previous_bandwidth_mhz'] is not None:
+                expect(panel).to_contain_text(event['event_label'])
+                expect(panel).to_contain_text('Sustained bandwidth confirmed '+event['confirmation_month'])
                 expect(panel).to_contain_text(f"{event['previous_bandwidth_mhz']:g} → {event['new_bandwidth_mhz']:g} MHz")
             else:
                 assert event['event_date']==max(event['cell_activation_months'].values())
+                expect(panel).to_contain_text(event['event_label'])
             for cell,month in event['cell_activation_months'].items():
                 expect(panel).to_contain_text(f'{cell} · first positive traffic {month}')
             expect(panel).to_contain_text('Configuration date: Unknown')

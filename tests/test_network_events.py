@@ -11,6 +11,7 @@ OCT = date(2023,10,1)
 NOV = date(2023,11,1)
 DEC = date(2023,12,1)
 JAN = date(2024,1,1)
+FEB = date(2024,2,1)
 
 
 class CellEvidenceTests(SimpleTestCase):
@@ -31,12 +32,34 @@ class CellEvidenceTests(SimpleTestCase):
             self.assertIsNone(bandwidth_from_prb(prbs))
 
     def test_upgrade_waits_for_positive_traffic_and_downgrade_keeps_identity(self):
-        state=analyze_cell([(OCT,1,25),(NOV,0,52),(DEC,2,49),(JAN,2,25)],'4G',OCT)
+        state=analyze_cell([(OCT,1,25),(NOV,0,52),(DEC,2,49),(JAN,2,25),(FEB,2,25)],'4G',OCT)
         up,down=state['bandwidth_changes']
         self.assertEqual((up['event_type'],up['effective_date'],up['previous_bandwidth_mhz'],up['new_bandwidth_mhz']),
                          ('BANDWIDTH_UPGRADE',DEC,5,10))
         self.assertEqual(up['details']['first_changed_prb_month'],NOV.isoformat())
         self.assertEqual((down['event_type'],down['effective_date']),('BANDWIDTH_DOWNGRADE',JAN))
+        self.assertEqual(up['details']['confirmation_month'],DEC.isoformat())
+        self.assertEqual(down['details']['confirmation_month'],FEB.isoformat())
+
+    def test_sustained_confirmation_keeps_first_positive_month_and_rejects_single_spikes(self):
+        self.assertEqual(analyze_cell([(OCT,1,25),(NOV,1,100),(DEC,1,25)],'4G',OCT)['bandwidth_changes'],[])
+        self.assertEqual(analyze_cell([(OCT,1,25),(NOV,1,100)],'4G',OCT)['bandwidth_changes'],[])
+        change, = analyze_cell([(OCT,1,25),(NOV,1,100),(DEC,1,100)],'4G',OCT)['bandwidth_changes']
+        self.assertEqual(change['effective_date'],NOV)
+        self.assertEqual(change['details']['confirmation_month'],DEC.isoformat())
+        self.assertEqual(change['details']['confirmed_at'],JAN.isoformat())
+        self.assertEqual(change['details']['label'],'bandwidth_5_to_20_upgrade')
+
+    def test_missing_or_unmapped_confirmation_breaks_a_sustained_shift(self):
+        for rows in [[(OCT,1,25),(NOV,1,100),(JAN,1,100)],
+                     [(OCT,1,25),(NOV,1,100),(DEC,1,None),(JAN,1,100),(FEB,1,100)],
+                     [(OCT,1,25),(NOV,1,100),(DEC,1,88),(JAN,1,100),(FEB,1,100)]]:
+            self.assertEqual(analyze_cell(rows,'4G',OCT)['bandwidth_changes'],[])
+
+    def test_spike_return_does_not_invent_reverse_event_then_sustained_shift_uses_accepted_state(self):
+        changes = analyze_cell([(OCT,1,25),(NOV,1,100),(DEC,1,25),(JAN,1,50),(FEB,1,50)],'4G',OCT)['bandwidth_changes']
+        change, = changes
+        self.assertEqual((change['previous_bandwidth_mhz'],change['new_bandwidth_mhz'],change['effective_date']),(5,10,JAN))
 
     def test_gaps_unknown_prbs_and_jitter_do_not_invent_change_months(self):
         for rows in [[(OCT,1,25),(DEC,1,100)],[(OCT,1,25),(NOV,1,None),(DEC,1,100)],
@@ -142,6 +165,22 @@ class NetworkEventTests(TestCase):
         self.assertEqual(event.event_type,'TECHNOLOGY_ADDED')
         self.assertEqual(event.details['cell_ids'],['new_a','new_b'])
 
+    def test_same_band_different_frequency_is_cell_addition(self):
+        self.cell('existing',active=OCT)
+        self.cell('new_carrier',frequency=1850,active=NOV)
+        event, = self.events()
+        self.assertEqual(event.event_type,'CELL_ADDED')
+
+    def test_new_band_groups_carriers_and_has_specific_label(self):
+        self.cell('existing',active=OCT)
+        self.cell('carrier1',band='B20',frequency=800,active=NOV)
+        self.cell('carrier2',band='B20',frequency=850,active=NOV)
+        event, = self.events()
+        self.assertEqual(event.event_type,'FREQUENCY_BAND_ADDED')
+        self.assertEqual(event.details['label'],'B20_ADDED')
+        self.assertEqual(event.details['cell_ids'],['carrier1','carrier2'])
+        self.assertEqual(event.details['completion_scope'],'activation_month_cohort')
+
     def test_missing_group_member_prevents_complete_event_and_missing_is_not_zero(self):
         unknown=self.cell('unknown')
         MAOSMonthlyKPI.objects.filter(cell=unknown).update(thrp_bits_dl=None)
@@ -155,11 +194,12 @@ class NetworkEventTests(TestCase):
     def test_bandwidth_persists_and_recompute_is_idempotent_with_old_history_retained(self):
         cell=self.cell('upgrade',active=OCT)
         MAOSMonthlyKPI.objects.create(cell=cell,month_date=NOV,thrp_bits_dl=1,prb_dl_available=100)
+        MAOSMonthlyKPI.objects.create(cell=cell,month_date=DEC,thrp_bits_dl=1,prb_dl_available=100)
         event,=self.events()
         self.assertEqual((event.event_type,event.previous_bandwidth_mhz,event.new_bandwidth_mhz),('BANDWIDTH_UPGRADE',5,20))
         self.events()
         self.assertEqual(RadioNetworkEvent.objects.filter(site=self.site).count(),1)
-        MAOSMonthlyKPI.objects.filter(cell=cell,month_date=NOV).update(thrp_bits_dl=0)
+        MAOSMonthlyKPI.objects.filter(cell=cell,month_date=DEC).update(prb_dl_available=None)
         self.assertEqual(self.events(),[])
         event.refresh_from_db()
         self.assertFalse(event.is_current)

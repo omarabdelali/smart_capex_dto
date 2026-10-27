@@ -20,7 +20,7 @@ class SiteSerializer(serializers.ModelSerializer):
         model = Site
         fields = [
             'site_id', 'site_name', 'latitude', 'longitude',
-            'cluster_id', 'is_cluster_edge', 'out_of_bounds',
+            'cluster_id', 'tier_scheme', 'canonical_site_id', 'is_cluster_edge', 'out_of_bounds',
             'cells'
         ]
 
@@ -46,7 +46,7 @@ class SiteGeoJSONSerializer(serializers.ModelSerializer):
         model = Site
         fields = [
             'site_id', 'site_name', 'latitude', 'longitude',
-            'cluster_id', 'is_cluster_edge', 'out_of_bounds',
+            'cluster_id', 'tier_scheme', 'canonical_site_id', 'is_cluster_edge', 'out_of_bounds',
             'cell_count', 'technologies', 'is_launched', 'launch_date',
             'added_cell_count', 'addition_events', 'network_events', 'matched_cells'
         ]

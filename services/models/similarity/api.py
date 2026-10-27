@@ -110,6 +110,8 @@ def search_similarity(params):
         if site is None:
             continue
         cases.append({
+            'tier_scheme': vector.get('tier_scheme'),
+            'neighborhood': vector.get('virtual_cluster_context'),
             'site_id': site.site_id,
             'site_name': site.site_name,
             'event_date': effective_event_date(site),
@@ -138,6 +140,8 @@ def search_similarity(params):
     return result({
         'query': {
             'dimension_values': {**_similarity_features(query_vector), **(prepared['query_scores'] if prepared else {})},
+            'tier_scheme': query_vector.get('tier_scheme'),
+            'neighborhood': query_vector.get('virtual_cluster_context'),
             'site_id': query_site.site_id,
             'site_name': query_site.site_name,
             'event_date': query_event_date,
@@ -205,6 +209,13 @@ def feature_availability(params):
         }
         for field in SIMILARITY_FIELDS
     ]
+    if vector.get('tier_scheme')=='extended':
+        for feature in features:
+            feature['label']=feature['label'].replace('0-2 km','<5 km').replace('2-5 km','5-<10 km').replace('0–2 km','<5 km').replace('2–5 km','5-<10 km')
+            if feature['key']=='population_tier1':
+                feature['label']='Tier 1 population (<5 km)'
+            elif feature['key']=='population_tier2':
+                feature['label']='Tier 2 population (5-<10 km)'
     prepared = None
     if representation == 'pca':
         _, vectors, _ = candidate_context(query_site, vector, current_as_of)
@@ -215,6 +226,8 @@ def feature_availability(params):
         'pca': prepared['report'] if prepared else None,
         'site_id': query_site.site_id,
         'site_name': query_site.site_name,
+        'tier_scheme': vector.get('tier_scheme'),
+        'neighborhood': vector.get('virtual_cluster_context'),
         'features': features,
         'as_of_date': vector.get('feature_as_of_date'),
         'event_date': event_date,

@@ -100,17 +100,8 @@ class ANPFeaturesSerializer(serializers.ModelSerializer):
         ]
 
     def get_angular_bins(self, obj):
-        from services.utils.geo_utils import compute_bearing, haversine
-
-        origin_lat = obj.site.latitude
-        origin_lon = obj.site.longitude
-        bins = [0] * 12
-        neighbor_coords = Site.objects.exclude(pk=obj.site_id).values_list('latitude', 'longitude')
-        for latitude, longitude in neighbor_coords:
-            if haversine(origin_lat, origin_lon, latitude, longitude) <= 5000:
-                bearing = compute_bearing(origin_lat, origin_lon, latitude, longitude)
-                bins[int(bearing // 30) % 12] += 1
-        return bins
+        from services.models.features.neighborhood import angular_bins
+        return angular_bins(obj.site)
 
 
 class KPIFeaturesSerializer(serializers.ModelSerializer):
@@ -148,8 +139,8 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
     # Nested feature serializers
     geometric = GeometricFeaturesSerializer(source='geometric_features', read_only=True)
     clutter = ClutterFeaturesSerializer(source='clutter_features', read_only=True)
-    spatial = SpatialFeaturesSerializer(source='spatial_features', read_only=True)
-    anp = ANPFeaturesSerializer(source='anp_features', read_only=True)
+    spatial = serializers.SerializerMethodField()
+    anp = serializers.SerializerMethodField()
     kpi = serializers.SerializerMethodField()
     maos_monthly = serializers.SerializerMethodField()
     maos_cells = serializers.SerializerMethodField()
@@ -160,6 +151,7 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
     cluster_prelaunch = serializers.SerializerMethodField()
     configuration_support = serializers.SerializerMethodField()
     population = serializers.SerializerMethodField()
+    neighborhood = serializers.SerializerMethodField()
     roads = RoadFeaturesSerializer(source='road_features', read_only=True)
     
     # Cell info
@@ -181,7 +173,7 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
             'site_name',
             'latitude',
             'longitude',
-            'cluster_id',
+            'cluster_id', 'tier_scheme', 'canonical_site_id', 'neighborhood',
             'is_cluster_edge',
             'out_of_bounds',
             'is_launched',
@@ -210,13 +202,26 @@ class SiteWithFeaturesSerializer(serializers.ModelSerializer):
             'roads',
         ]
     
+    def get_neighborhood(self,obj):
+        from services.models.features.neighborhood import analysis_payload
+        return analysis_payload(obj)[0]
+
+    def get_spatial(self,obj):
+        from services.models.features.neighborhood import popup_spatial
+        return popup_spatial(obj)
+
+    def get_anp(self,obj):
+        from services.models.features.neighborhood import popup_anp
+        return popup_anp(obj)
+
     def get_cell_count(self, obj):
         """Get number of cells at this site."""
         return sum(1 for _ in obj.cells.all())
 
     def get_population(self, obj):
         from services.models.features.population import population_features
-        return population_features(obj.latitude, obj.longitude)
+        from services.models.features.neighborhood import scheme
+        return population_features(obj.latitude,obj.longitude,tier_scheme=scheme(obj))
     
     def get_technologies(self, obj):
         """Get list of technologies at this site."""

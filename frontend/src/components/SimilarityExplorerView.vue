@@ -45,6 +45,7 @@
         <div class="picker-heading"><div><strong>Features used for similarity</strong><p>Select available query features. Missing candidate values are skipped for that case.</p></div>
           <span>{{ selectedFeatures.length }} selected</span></div>
         <p v-if="availabilityAsOf" class="feature-profile-date">KPI event cutoff: <strong>{{ availabilityAsOf }}</strong>. Performance excludes the event month; configuration PRBs may use it.</p>
+        <p v-if="tierScheme" class="tier-scheme-note">{{ tierScheme }} tiers: {{ tierScheme === 'extended' ? 'Tier 1 <5 km; Tier 2 5–<10 km' : 'Tier 1 ≤2 km; Tier 2 >2–5 km' }}. Candidates are always restricted to the same scheme, including PCA.</p>
         <p class="scope-note">Geography, land-cover estimates and population use the approved static-context assumption. Cluster KPIs use the previous calendar month. Antenna height defaults to 25 m when a positive plan value is unavailable. Capacity is measured in PRBs.</p>
         <p v-if="availabilityLoading" class="picker-status" role="status">Checking feature availability...</p>
         <p v-else-if="featureError" class="error-message" role="alert">{{ featureError }}</p>
@@ -71,7 +72,7 @@
       <p v-if="searchError" class="error-message" role="alert">{{ searchError }}</p>
     </section>
 
-    <p class="scope-note">The available MAOS history is LTE-only. Similarity scores rank historical cases; they are not predicted KPI impacts. Population uses native 100 m GHSL 2025 estimates, treated as stable across event years by the approved assumption. Tier 1 is 0–2 km; Tier 2 is the separate 2–5 km ring.</p>
+    <p class="scope-note">The available MAOS history is LTE-only. Similarity scores rank historical cases. Population uses native 100 m GHSL 2025 estimates, treated as stable across event years. Catchment radii follow the selected site's standard or extended tier scheme.</p>
     <p v-if="results?.query.feature_timing_note" class="scope-note">{{ results.query.feature_timing_note }}</p>
     <p v-if="results" class="scope-note">Population features are mapped counts, without extrapolating missing land. Query land coverage: T1 {{ results.query.population_quality?.tier1?.land_coverage == null ? 'Unavailable' : (100 * results.query.population_quality.tier1.land_coverage).toFixed(1) + '%' }}, T2 {{ results.query.population_quality?.tier2?.land_coverage == null ? 'Unavailable' : (100 * results.query.population_quality.tier2.land_coverage).toFixed(1) + '%' }}. Partial estimates may understate full catchment population.</p>
     <p v-if="loading" class="state-message" role="status">Building pre-event profiles and ranking cases...</p>
@@ -149,6 +150,7 @@ export default {
     const loading = ref(false);
     const availabilityLoading = ref(false);
     const availabilityAsOf = ref(null);
+    const tierScheme = ref(null);
     const featureOptions = ref([]);
     const selectedFeatures = ref([]);
     const weightingMode = ref('equal_per_feature');
@@ -172,7 +174,7 @@ export default {
       { key: 'pre_cell_availability_pct', label: 'Cell availability', unit: '%' },
     ];
       const populationLabels = { population_density_1km_per_km2: 'Population density (1 km) · people/km²', population_tier1: 'Tier 1 population (0–2 km) · people', population_tier2: 'Tier 2 population (2–5 km) · people' };
-      const featureRows = computed(() => (results.value?.representation === 'pca' ? results.value.selected_features : Object.keys(results.value?.query?.similarity_features || {})).map(key => ({ key, label: populationLabels[key] || featureOptions.value.find(f => f.key === key)?.label || key.replaceAll('_', ' ') })));
+      const featureRows = computed(() => (results.value?.representation === 'pca' ? results.value.selected_features : Object.keys(results.value?.query?.similarity_features || {})).map(key => ({ key, label: featureOptions.value.find(f => f.key === key)?.label || populationLabels[key] || key.replaceAll('_', ' ') })));
     const featureGroups = computed(() => {
       const labels = { pca: 'Principal components - standardized numeric inputs', configuration: 'Configuration', prelaunch: 'Site pre-event profile and unsupported source fields', cluster_prelaunch: 'Cluster KPIs - month before event', spatial: 'Spatial context', anp: 'Angular Neighborhood Profile', cluster: 'Cluster context', clutter: 'Terrain and clutter', population: 'Population · GHSL 2025 · 100 m', user_context: 'Pre-event edge and low-latency users', road_context: 'Road context · optional current snapshot', other: 'Other' };
       const groups = new Map();
@@ -251,6 +253,7 @@ export default {
         featureOptions.value = response.data.features || [];
         pcaReport.value = response.data.pca || null;
         availabilityAsOf.value = response.data.as_of_date || null;
+        tierScheme.value = response.data.tier_scheme || null;
         const previous = selectionByMode.get(representation.value);
         selectedFeatures.value = featureOptions.value.filter(feature => feature.available && feature.selectable !== false && (previous ? previous.includes(feature.key) : feature.default_selected !== false)).map(feature => feature.key);
       } catch (requestError) {
@@ -314,7 +317,7 @@ export default {
       emit('show-on-map', { querySiteId: selectedSite.value.site_id, siteIds: [...new Set([selectedSite.value.site_id, ...results.value.cases.map(item => item.site_id)])] });
     }
     onBeforeUnmount(() => { rankingRequest += 1; availabilityRequest += 1; if (searchTimer) window.clearTimeout(searchTimer); });
-    return { representation, pcaReport, featureFilter, queryDimension, caseDimension, weightingMode, availabilityAsOf, searchText, suggestions, selectedSite, results, loading, error, searchError, availabilityLoading, featureOptions, selectedFeatures, featureError, featureGroups, featureRows, resultsStale, selectSite, chooseFirst, runSearch, selectAllAvailable, clearFeatureSelection, percent, formatMetric, eventLabel, isUnavailable, displayFeature, featureStatus, featureWeight, showOnMap };
+    return { tierScheme, representation, pcaReport, featureFilter, queryDimension, caseDimension, weightingMode, availabilityAsOf, searchText, suggestions, selectedSite, results, loading, error, searchError, availabilityLoading, featureOptions, selectedFeatures, featureError, featureGroups, featureRows, resultsStale, selectSite, chooseFirst, runSearch, selectAllAvailable, clearFeatureSelection, percent, formatMetric, eventLabel, isUnavailable, displayFeature, featureStatus, featureWeight, showOnMap };
   },
 };
 </script>

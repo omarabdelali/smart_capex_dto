@@ -87,7 +87,7 @@ class UserContextTests(TestCase):
     def test_noise_sites_do_not_share_one_cluster(self):
         noise,_=self.site('noise',35.05,cluster=-1)
         self.site('other_noise',35.06,cluster=-1)
-        self.assertEqual(scope_members(noise)['cluster'],['noise'])
+        self.assertEqual(scope_members(noise)['cluster'],[])
 
     def test_profiles_exclude_event_month_and_later_counters(self):
         cutoff=date(2025,6,1)

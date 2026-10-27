@@ -14,6 +14,7 @@ from services.models.similarity.historical import cluster_members
 from services.models.features.road_loader import ROAD_FIELDS
 from services.models.features.maos_context import monthly_annotations
 from services.utils.geo_utils import haversine
+from services.models.preprocessing.network_events import event_rules
 
 
 METRICS = {
@@ -50,7 +51,7 @@ OUTPUT_FIELDS = {
     'dl_packet_delay_ms': 'dl_packet_delay_ms',
 }
 OFFSETS = tuple(range(-3, 7))
-PREDICT_OFFSETS = tuple(range(0, 7))
+PREDICT_OFFSETS = tuple(range(event_rules()['effect_start_offset'], 7))
 
 
 def _next_month(value):
@@ -73,13 +74,14 @@ def _row_value(row, key):
 
 
 def _month_rows():
-    queryset = MAOSMonthlyKPI.objects.values('cell__site__site_id', 'month_date').annotate(
-        **monthly_annotations(),
-    ).order_by('cell__site__site_id', 'month_date')
-    by_site = defaultdict(dict)
-    for row in queryset.iterator(chunk_size=10_000):
-        by_site[row['cell__site__site_id']][row['month_date']] = row
-    return by_site
+    from services.models.features.neighborhood import inventory
+    _,by_raw = inventory({})
+    queryset = MAOSMonthlyKPI.objects.values('cell__site__site_id','month_date').annotate(**monthly_annotations())
+    grouped = defaultdict(lambda: defaultdict(list))
+    for row in queryset.iterator(chunk_size=10000):
+        key=by_raw.get(row['cell__site__site_id'],row['cell__site__site_id'])
+        grouped[key][row['month_date']].append(row)
+    return {key:{month:_merge_raw_rows(rows) for month,rows in months.items()} for key,months in grouped.items()}
 
 
 def _merge_raw_rows(rows):
@@ -164,6 +166,8 @@ def _weighted_bootstrap(values, weights, seed):
 
 
 def _predict_delta(ranked_cases, outcomes_by_site, scope, metric, offset):
+    if offset not in PREDICT_OFFSETS:
+        return None, None, None, 0
     values, weights = [], []
     for case in ranked_cases:
         site_id = case['features'].get('site_id')
@@ -177,28 +181,12 @@ def _predict_delta(ranked_cases, outcomes_by_site, scope, metric, offset):
     return estimate, low, high, len(values)
 
 
-def _scope_members(origin, all_sites, by_site, event_date):
-    tier1, tier2, cluster = [], [], []
-    distances = {}
-    for site in all_sites:
-        if site.pk == origin.pk:
-            continue
-        distance = haversine(origin.latitude, origin.longitude, site.latitude, site.longitude)
-        distances[site.site_id] = distance
-        if distance <= 2000:
-            tier1.append(site.site_id)
-        elif distance <= 5000:
-            tier2.append(site.site_id)
-    active_network = {
-        site.site_id: {'site_id': site.site_id, 'latitude': site.latitude, 'longitude': site.longitude}
-        for site in all_sites if site.pk != origin.pk and _site_is_active(site.site_id, event_date, by_site)
-    }
-    cluster = [row['site_id'] for row in cluster_members(origin, active_network) if row['site_id'] != origin.site_id]
-    return {
-        'tier1': _available_site_ids(tier1, event_date, by_site),
-        'tier2': _available_site_ids(tier2, event_date, by_site),
-        'cluster': _available_site_ids(cluster, event_date, by_site),
-    }, distances
+def _scope_members(origin, all_sites, by_site, event_date, cache=None):
+    from services.models.features.neighborhood import neighborhood
+    context=neighborhood(origin,event_date,cache)
+    scopes={key:[r['site_id'] for r in members] for key,members in context['scopes'].items()}
+    distances={r['site_id']:r['distance_m'] for members in context['scopes'].values() for r in members}
+    return scopes,distances
 
 
 def _baseline_scope(site_ids, event_date, by_site, metric):
@@ -231,7 +219,7 @@ def _group_series(scope, site_ids, event_date, by_site, outcomes_by_site, ranked
     series = {}
     for metric, definition in METRICS.items():
         points = []
-        if not definition['available']:
+        if not definition['available'] or (scope=='virtual_cluster' and metric!='downlink_traffic_gb'):
             series[metric] = points
             continue
         baseline = _baseline_scope(site_ids, event_date, by_site, metric)
@@ -239,7 +227,7 @@ def _group_series(scope, site_ids, event_date, by_site, outcomes_by_site, ranked
         for offset in OFFSETS:
             month = _month_at_offset(event_date, offset)
             actual, observed_sites = _cohort_observed(eligible, month, by_site, metric)
-            if offset < 0:
+            if offset < event_rules()['effect_start_offset']:
                 impact = low = high = None
                 case_count = 0
             else:
@@ -264,25 +252,31 @@ def _group_series(scope, site_ids, event_date, by_site, outcomes_by_site, ranked
                 'baseline': baseline,
                 'eligible_sites': len(eligible),
                 'observed_sites': observed_sites,
+                'is_partial_event_month': offset == 0,
+                'effect_eligible': offset >= event_rules()['effect_start_offset'],
             })
         series[metric] = points
     return series
 
 
-def build_cbr_impact_prediction(site_id):
+def build_cbr_impact_prediction(site_id,event_key=None):
     """Predict KPI changes for the selected site's T1/T2 and cluster neighbors."""
     query_site = Site.objects.select_related(
         'config_features', 'geometric_features', 'clutter_features', 'spatial_features',
         'anp_features', 'cluster_features', 'prelaunch_kpi',
-    ).filter(site_id=site_id).first()
+    ).prefetch_related('cells','network_events').filter(site_id=site_id).first()
     if query_site is None:
         return None
 
     latest_month = MAOSMonthlyKPI.objects.aggregate(month=Max('month_date'))['month']
     if latest_month is None:
         return {'error': 'No monthly MAOS data is available.'}
-    from services.models.preprocessing.network_events import effective_event_date
-    query_event_date = effective_event_date(query_site)
+    from services.models.preprocessing.network_events import effective_event_date,primary_event
+    events=[e for e in query_site.network_events.all() if e.is_current]
+    chosen=next((e for e in events if e.event_key==event_key),None) if event_key else primary_event(query_site)
+    if event_key and chosen is None:
+        return {'error':'The selected event does not belong to this site.'}
+    query_event_date = chosen.effective_date if chosen else effective_event_date(query_site)
     detected_event = query_event_date is not None
     event_date = query_event_date or _next_month(latest_month)
     cutoff = event_date.replace(day=1)
@@ -290,6 +284,10 @@ def build_cbr_impact_prediction(site_id):
     query_vector = build_site_similarity_vector(
         query_site, as_of_date=cutoff, snapshot_cache=snapshot_cache
     )
+    if event_key:
+        query_vector.update(event_type=chosen.event_type,
+            tech_added='/'.join(chosen.details.get('technologies',[])) if chosen.event_type=='TECHNOLOGY_ADDED' else None,
+            bands_added=','.join(chosen.details.get('bands',[])) if chosen.event_type in ('SITE_ADDED','TECHNOLOGY_ADDED','FREQUENCY_BAND_ADDED') else None)
 
     site_launches = list(Site.objects.filter(
         is_launched=True, launch_date__isnull=False, launch_date__lt=cutoff,
@@ -297,6 +295,7 @@ def build_cbr_impact_prediction(site_id):
         'config_features', 'geometric_features', 'clutter_features', 'spatial_features',
         'anp_features', 'cluster_features', 'prelaunch_kpi',
     ).order_by('launch_date', 'site_id'))
+    site_launches = [site for site in site_launches if (site.cluster_id==-1)==(query_site.cluster_id==-1) and (not query_site.canonical_site_id or site.canonical_site_id!=query_site.canonical_site_id)]
     launch_dates = {site.site_id: site.launch_date for site in site_launches}
     candidates = [
         build_site_similarity_vector(site, as_of_date=site.launch_date, snapshot_cache=snapshot_cache)
@@ -307,13 +306,13 @@ def build_cbr_impact_prediction(site_id):
     all_sites = list(Site.objects.all().only(
         'id', 'site_id', 'site_name', 'latitude', 'longitude', 'cluster_id',
     ))
-    scope_members, distances = _scope_members(query_site, all_sites, by_site, event_date)
+    scope_members, distances = _scope_members(query_site, all_sites, by_site, event_date, snapshot_cache)
     site_by_id = {site.site_id: site for site in all_sites}
 
     outcomes_by_site = {}
     for event_site in site_launches:
         case_date = launch_dates[event_site.site_id]
-        members = _scope_members(event_site, all_sites, by_site, case_date)[0]
+        members = _scope_members(event_site, all_sites, by_site, case_date, snapshot_cache)[0]
         outcomes_by_site[event_site.site_id] = {
             scope: _event_group_responses(site_ids, case_date, by_site, available_before=cutoff)[0]
             for scope, site_ids in members.items()
@@ -337,10 +336,14 @@ def build_cbr_impact_prediction(site_id):
         for item in ranking['cases']
     ]
 
+    from services.models.features.neighborhood import public_context, labels, scheme
+    neighborhood_context = public_context(query_site,event_date,snapshot_cache)
     scopes = {}
     for scope, site_ids in scope_members.items():
         scopes[scope] = {
             'site_count': len(site_ids),
+            'label': labels(scheme(query_site)).get(scope,scope),
+            'is_sample': scope=='virtual_cluster',
             'status': 'available' if site_ids else 'no_active_neighbor_sites',
             'series': _group_series(scope, site_ids, event_date, by_site, outcomes_by_site, ranked_cases),
         }
@@ -364,7 +367,7 @@ def build_cbr_impact_prediction(site_id):
                         actual = _row_value(
                             by_site.get(neighbor_id, {}).get(_month_at_offset(event_date, offset)), metric
                         )
-                        if offset < 0:
+                        if offset < event_rules()['effect_start_offset']:
                             impact = low = high = None
                             count = 0
                         else:
@@ -384,6 +387,8 @@ def build_cbr_impact_prediction(site_id):
                             'baseline': baseline,
                             'eligible_sites': 1 if baseline is not None else 0,
                             'observed_sites': 1 if actual is not None else 0,
+                            'is_partial_event_month': offset == 0,
+                            'effect_eligible': offset >= event_rules()['effect_start_offset'],
                         })
                 points_by_metric[metric] = points
             site_predictions.append({
@@ -401,11 +406,17 @@ def build_cbr_impact_prediction(site_id):
             'site_id': query_site.site_id,
             'site_name': query_site.site_name,
             'cluster_id': query_site.cluster_id,
+            'tier_scheme': scheme(query_site),
+            'event_key':chosen.event_key if chosen else None,
             'event_date': event_date.isoformat(),
             'event_date_detected': detected_event,
             'date_note': 'Detected event date' if detected_event else 'Scenario date: month after latest available MAOS data',
             'latest_maos_month': latest_month.isoformat(),
         },
+        'neighborhood': neighborhood_context,
+        'available_events':[{'event_key':e.event_key,'date':e.effective_date.isoformat(),'label':e.details.get('label',e.event_type)} for e in events],
+        'scope_labels': labels(scheme(query_site)),
+        'distance_band_responses': {key:scopes[key] for key in ('distance_0_2','distance_2_5','distance_5_10')},
         'metrics': METRICS,
         'scopes': scopes,
         'site_predictions': site_predictions,
@@ -414,6 +425,8 @@ def build_cbr_impact_prediction(site_id):
         'active_features': ranking['active_features'],
         'feature_timing_note': query_vector['feature_timing_note'],
         'prediction_cutoff': cutoff.isoformat(),
+        'effect_start_offset': event_rules()['effect_start_offset'],
+        'event_month_note': 'Month 0 is a partial activation month shown for context only. Effect estimates and analog outcomes start at month +1.',
         'population_features': {key: query_vector.get(key) for key in ('population_density_1km_per_km2', 'population_tier1', 'population_tier2')},
         'population_quality': query_vector.get('population_quality'),
         'filter_explanation': ranking['filter_explanation'],

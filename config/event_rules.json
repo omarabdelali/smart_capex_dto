@@ -1,0 +1,6 @@
+{
+  "bandwidth_confirmation_months": 2,
+  "effect_start_offset": 1,
+  "addition_grouping": "activation_month_cohort",
+  "band_identity": ["site", "technology", "band"]
+}
