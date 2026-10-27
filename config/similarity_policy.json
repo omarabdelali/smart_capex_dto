@@ -1,0 +1,8 @@
+{
+  "version": "similarity-v4",
+  "minimum_available_weight_share": 0.6,
+  "reference_path": "data/calibration/similarity_reference.json",
+  "kernel_width_factor": 0.5,
+  "kernel_minimum_width": 0.000001,
+  "calibration_status": "prior; nested validation required before promotion"
+}

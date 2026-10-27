@@ -259,7 +259,7 @@ def _group_series(scope, site_ids, event_date, by_site, outcomes_by_site, ranked
     return series
 
 
-def build_cbr_impact_prediction(site_id,event_key=None):
+def build_cbr_impact_prediction(site_id,event_key=None,actor=None,profile_params=None):
     """Predict KPI changes for the selected site's T1/T2 and cluster neighbors."""
     query_site = Site.objects.select_related(
         'config_features', 'geometric_features', 'clutter_features', 'spatial_features',
@@ -289,6 +289,15 @@ def build_cbr_impact_prediction(site_id,event_key=None):
             tech_added='/'.join(chosen.details.get('technologies',[])) if chosen.event_type=='TECHNOLOGY_ADDED' else None,
             bands_added=','.join(chosen.details.get('bands',[])) if chosen.event_type in ('SITE_ADDED','TECHNOLOGY_ADDED','FREQUENCY_BAND_ADDED') else None)
 
+    from services.analysis_profiles import resolve_profile
+    profile_settings,profile_metadata,profile_error=resolve_profile(actor,'prediction',profile_params or {},{
+        'event_type':query_vector.get('event_type'),'tier_scheme':query_vector.get('tier_scheme'),'technology':'/'.join(chosen.details.get('technologies',[])) if chosen else query_vector.get('_event_technologies') or query_vector.get('tech_added')})
+    if profile_error:
+        return profile_error[0]
+    if profile_settings and profile_settings['representation']=='pca':
+        return {'error':'PCA profiles apply to exploratory similarity only. Select an original-feature profile for legacy CBR.'}
+    if profile_settings:
+        query_vector['_allow_filter_relaxation']=profile_settings['allow_filter_relaxation']
     site_launches = list(Site.objects.filter(
         is_launched=True, launch_date__isnull=False, launch_date__lt=cutoff,
     ).exclude(pk=query_site.pk).select_related(
@@ -323,7 +332,9 @@ def build_cbr_impact_prediction(site_id,event_key=None):
         if field not in ROAD_FIELDS and not GowerDistance._is_missing(query_vector.get(field))
     ]
     ranking = rank_similar_cases(
-        query_vector, candidates, k=10, selected_features=selected_features
+        query_vector, candidates, k=10, selected_features=profile_settings['similarity_features'] if profile_settings else selected_features,
+        weighting_mode=profile_settings['weighting_mode'] if profile_settings else 'equal_per_feature',
+        minimum_available_weight_share=profile_settings['minimum_available_weight_share'] if profile_settings else None,strict_selection=bool(profile_settings)
     )
     ranked_cases = [
         {
@@ -331,6 +342,7 @@ def build_cbr_impact_prediction(site_id,event_key=None):
             'event_date': launch_dates.get(item['features'].get('site_id')),
             'similarity': item['similarity'],
             'weight': item['weight'],
+            'available_weight_share':item.get('available_weight_share'),
             'features': item['features'],
         }
         for item in ranking['cases']
@@ -401,7 +413,7 @@ def build_cbr_impact_prediction(site_id,event_key=None):
                 'series': points_by_metric,
             })
 
-    return {
+    return {'analysis_profile':profile_metadata,
         'query': {
             'site_id': query_site.site_id,
             'site_name': query_site.site_name,
@@ -430,6 +442,9 @@ def build_cbr_impact_prediction(site_id,event_key=None):
         'population_features': {key: query_vector.get(key) for key in ('population_density_1km_per_km2', 'population_tier1', 'population_tier2')},
         'population_quality': query_vector.get('population_quality'),
         'filter_explanation': ranking['filter_explanation'],
+        'reference':ranking.get('reference'),
+        'minimum_available_weight_share':ranking.get('minimum_available_weight_share',.6),
+        'rejected_cases':ranking.get('rejected_cases',[]),
         'method_note': 'CBR estimates KPI changes from historical site-launch analogs relative to each recipient cohort’s three-month pre-event baseline. These are observational estimates, not a causal counterfactual.',
         'data_note': 'Only analog launches and completed outcome months strictly before the query event month enter predictions. Later query observations are display-only. Current MAOS import is LTE-only; RSRP, average RRC users and 2G/3G KPI histories are unavailable. Cluster cohorts are reconstructed from pre-event LTE activity.',
         'aggregation_note': 'Traffic/users use sums of individual recipient baselines and changes; CQI, throughput and delay use arithmetic means of site KPIs and changes. Observations use the same baseline-eligible cohort and show gaps when incomplete. Predicted levels and intervals respect physical bounds.',

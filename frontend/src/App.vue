@@ -12,6 +12,7 @@
       <button type="button" :aria-current="activePage === 'explore' ? 'page' : null" @click="activePage = 'explore'">Data Explorer</button>
       <button type="button" :aria-current="activePage === 'prediction' ? 'page' : null" @click="activePage = 'prediction'">CBR impact</button>
       <button type="button" :aria-current="activePage === 'sync' ? 'page' : null" @click="activePage = 'sync'">Feature sync</button>
+      <button type="button" :aria-current="activePage === 'configuration' ? 'page' : null" @click="activePage = 'configuration'">Administration</button>
     </nav>
     
     <main class="app-main">
@@ -19,6 +20,7 @@
       <ClusterAnalysisView v-else-if="activePage === 'clusters'" />
       <DataExplorerView v-else-if="activePage === 'explore'" />
       <FeatureSyncView v-else-if="activePage === 'sync'" />
+      <AnalysisConfigurationView v-else-if="activePage === 'configuration'" />
       <CBRPredictionView v-else-if="activePage === 'prediction'" />
       <SimilarityExplorerView v-show="activePage === 'similarity'" @show-on-map="showSimilarityOnMap" />
     </main>
@@ -33,10 +35,12 @@ import SimilarityExplorerView from './components/SimilarityExplorerView.vue';
 import FeatureSyncView from './components/FeatureSyncView.vue';
 import CBRPredictionView from './components/CBRPredictionView.vue';
 import DataExplorerView from './components/DataExplorerView.vue';
+import AnalysisConfigurationView from './components/AnalysisConfigurationView.vue';
 
 export default {
   name: 'App',
   components: {
+    AnalysisConfigurationView,
     ClusterMapView,
     ClusterAnalysisView,
     SimilarityExplorerView,

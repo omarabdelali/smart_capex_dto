@@ -104,9 +104,11 @@ class HistoricalFeatureTests(TestCase):
     def test_cbr_candidates_exclude_later_launches(self):
         earlier, _ = self.make_site('earlier', 35.01, date(2025,4,1))
         self.make_site('same-month', 35.02, date(2025,6,1))
-        result = build_cbr_impact_prediction(self.origin.site_id)
+        from services.models.similarity.engine import rank_similar_cases
+        with patch('services.models.prediction.cbr_impact.rank_similar_cases',wraps=rank_similar_cases) as rank:
+            result = build_cbr_impact_prediction(self.origin.site_id)
         self.assertEqual(result['prediction_cutoff'], '2025-06-01')
-        self.assertEqual([case['site_id'] for case in result['cases']], [earlier.site_id])
+        self.assertEqual([case['site_id'] for case in rank.call_args.args[1]], [earlier.site_id])
 
     def test_cbr_predictions_are_invariant_to_future_kpi_changes(self):
         self.make_site('earlier1', 35.008, date(2025,2,1))

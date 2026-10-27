@@ -180,6 +180,10 @@ def build_site_similarity_vector(site, as_of_date=None, snapshot_cache=None, all
     from services.models.features.approved_context import approved_feature_values
     vector.update(approved_feature_values(site,cutoff,cache))
     vector['feature_as_of_date'] = cutoff.isoformat()
+    from services.models.preprocessing.network_events import primary_event
+    profile_event=primary_event(site)
+    vector['_event_technologies']=('/'.join(profile_event.details.get('technologies',[]))
+        if profile_event and profile_event.effective_date==cutoff else None)
     vector.update(road_similarity_values(_related(site, 'road_features'), cutoff, allow_current=allow_current_roads))
     vector['feature_timing_note'] = (
         'Site performance uses three complete pre-cutoff months; cluster pre-launch KPIs use the immediately preceding month. '

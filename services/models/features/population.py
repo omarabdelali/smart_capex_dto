@@ -86,7 +86,7 @@ def _catchment(path, version, latitude, longitude, radius=1000, inner_radius=0):
         x0, y0 = grid * (cols, rows)
         x1, y1 = grid * (cols+1, rows+1)
         cells = shapely.box(np.minimum(x0,x1), np.minimum(y0,y1), np.maximum(x0,x1), np.maximum(y0,y1))
-        areas = shapely.area(shapely.intersection(cells, circle))
+        areas = intersection_areas(cells, circle, cell_area)
         water = water_cells(src.crs, grid, data.shape).ravel()
         measured = valid.ravel()
         valid_area = float(areas[measured].sum())
@@ -107,6 +107,18 @@ def _catchment(path, version, latitude, longitude, radius=1000, inner_radius=0):
                 'land_coverage': land_coverage, 'water_pct': water_area/circle.area*100,
                 'observed_population': population,
                 'status': 'calculated' if complete else 'incomplete_land_coverage'}
+
+
+def intersection_areas(cells,catchment,cell_area):
+    """Exact areas: full pixels need no expensive polygon intersection."""
+    import shapely
+    shapely.prepare(catchment)
+    inside=shapely.contains(catchment,cells)
+    boundary=~inside & shapely.intersects(catchment,cells)
+    areas=np.zeros(len(cells),dtype=float)
+    areas[inside]=cell_area
+    areas[boundary]=shapely.area(shapely.intersection(cells[boundary],catchment))
+    return areas
 
 
 @lru_cache(maxsize=256)

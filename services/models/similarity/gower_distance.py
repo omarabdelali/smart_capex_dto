@@ -161,6 +161,8 @@ class GowerDistance:
             
             # Get feature weight
             weight = self._get_feature_weight(feature, feature_weights)
+            if weight <= 0:
+                continue
             
             # Compute feature-specific distance
             delta = self._compute_feature_distance(feature, x1[feature], x2[feature])

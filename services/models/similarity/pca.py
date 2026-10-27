@@ -11,6 +11,7 @@ from sklearn.preprocessing import StandardScaler
 from .gower_distance import GowerDistance
 from .hierarchical_filter import HierarchicalFilter
 from .kernel_weights import KernelWeights
+from .calibration import policy,reference_ranges,available_weight_share
 from .catalog import DISPLAY_ONLY, OPTIONAL
 from services.models.features.road_loader import ROAD_FIELDS, road_config
 
@@ -23,20 +24,23 @@ def finite(value):
     return isinstance(value, (int, float, np.number)) and math.isfinite(float(value))
 
 
-def prepare_pca(query, candidates, min_pool_size=3):
+def prepare_pca(query, candidates, min_pool_size=3, source_features=None, variance_target=None):
     """Fit using candidates only; query availability chooses the usable source mask.
 
     Retain >=95%-observed columns and complete rows. If their intersection keeps
     <50% of the pool, remove the column whose removal restores the most rows.
     Thresholds are explicit priors. No imputation, whitening or categorical coding.
     """
+    fit_policy={**POLICY,'variance_target':variance_target if variance_target is not None else POLICY['variance_target']}
     hierarchy = HierarchicalFilter(min_pool_size=min_pool_size)
     indices, level = hierarchy.filter_cases(query, candidates, return_filter_level=True)
     pool = [candidates[i] for i in indices]
     excluded, sources = {}, []
     for key in GowerDistance.NUMERIC_FEATURES:
         reason = None
-        if key in DISPLAY_ONLY or key in ROAD_FIELDS:
+        if source_features is not None and key not in source_features:
+            reason = 'not_selected_in_profile'
+        elif key in DISPLAY_ONLY or key in ROAD_FIELDS:
             reason = 'display_only' if key in DISPLAY_ONLY else 'road_budget_kept_separate'
         elif not finite(query.get(key)):
             reason = 'unavailable_for_query'
@@ -61,7 +65,7 @@ def prepare_pca(query, candidates, min_pool_size=3):
         sources.remove(drop)
         excluded[drop] = 'removed_to_preserve_complete_row_coverage'
     kept = complete(sources) if sources else []
-    report = {'policy': POLICY, 'source_features': sources, 'excluded_features': excluded,
+    report = {'policy': fit_policy, 'source_features': sources, 'excluded_features': excluded,
               'candidate_pool_size': len(pool), 'fit_rows': len(kept),
               'excluded_candidate_count': len(pool) - len(kept),
               'excluded_candidate_site_ids': [candidates[i].get('site_id') for i in indices if i not in kept],
@@ -104,7 +108,7 @@ def prepare_pca(query, candidates, min_pool_size=3):
     scores = model.transform(standardized)
     query_scores = model.transform(scaler.transform(np.asarray([encode(query)])[:, varying]))[0]
     cumulative = np.cumsum(model.explained_variance_ratio_)
-    count = min(len(cumulative), int(np.searchsorted(cumulative, POLICY['variance_target']) + 1))
+    count = min(len(cumulative), int(np.searchsorted(cumulative, fit_policy['variance_target']) + 1))
     report.update(available=True, encoded_features=columns, input_dimension=len(columns),
                   retained_dimension=count, retained_variance=float(cumulative[count - 1]),
                   scaler_mean=dict(zip(columns, scaler.mean_.tolist())),
@@ -121,7 +125,7 @@ def prepare_pca(query, candidates, min_pool_size=3):
         result['query_scores'][key] = float(query_scores[j])
     for position, index in enumerate(kept):
         result['candidate_scores'][index] = {f'PC{j + 1}': float(scores[position, j]) for j in range(count)}
-    fingerprint = json.dumps({'policy': POLICY, 'columns': columns, 'ids': report['fit_site_ids'],
+    fingerprint = json.dumps({'policy': fit_policy, 'columns': columns, 'ids': report['fit_site_ids'],
                               'matrix': matrix.tolist()}, sort_keys=True).encode()
     report['fit_id'] = hashlib.sha256(fingerprint).hexdigest()[:20]
     return result
@@ -141,7 +145,7 @@ def pca_options(query, prepared, original_options):
     return options
 
 
-def rank_pca(query, candidates, prepared, selected, k=10, weighting_mode='equal_per_feature'):
+def rank_pca(query, candidates, prepared, selected, k=10, weighting_mode='equal_per_feature',minimum_available_weight_share=None):
     """Gower-style robust score distance; categorical values stay categorical.
 
     PCA dimensions share one group in equal_per_group. Roads remain outside PCA,
@@ -149,12 +153,22 @@ def rank_pca(query, candidates, prepared, selected, k=10, weighting_mode='equal_
     Only explicitly selected dimensions score in this new representation.
     """
     distance = GowerDistance()
-    distance.fit_ranges([candidates[i] for i in prepared['indices']])
+    ranges,reference=reference_ranges(query,[candidates[i] for i in prepared['indices']])
+    distance.feature_ranges=ranges
+    threshold=policy()['minimum_available_weight_share'] if minimum_available_weight_share is None else minimum_available_weight_share
+    rejected=[]
     components = {c['key']: c for c in prepared['report']['components']}
     query_values = {**query, **prepared['query_scores']}
     ranked = []
     for i in prepared['indices']:
         values = {**candidates[i], **prepared['candidate_scores'].get(i, {})}
+        if query.get('feature_as_of_date'):
+            values.update({f:None for f in distance.NUMERIC_FEATURES if f not in ranges})
+        share=available_weight_share(distance,query_values,values,selected,weighting_mode,
+            field_groups={f:'pca' for f in components})
+        if share+1e-12 < threshold:
+            rejected.append({'site_id':values.get('site_id'),'available_weight_share':share})
+            continue
         common = [f for f in selected if not distance._is_missing(query_values.get(f)) and not distance._is_missing(values.get(f))]
         compatible = query.get('road_context_signature') and query.get('road_context_signature') == values.get('road_context_signature')
         common = [f for f in common if f not in ROAD_FIELDS or compatible]
@@ -179,7 +193,7 @@ def rank_pca(query, candidates, prepared, selected, k=10, weighting_mode='equal_
                 deltas[f] = distance._compute_feature_distance(f, query_values[f], values[f])
         score = sum(weights[f] * deltas[f] for f in common)
         ranked.append({'candidate_index': i, 'features': candidates[i], 'distance': score,
-                       'similarity': 1 - score, 'used_features': common, 'feature_weights': weights,
+                       'similarity': 1 - score, 'available_weight_share':share, 'used_features': common, 'feature_weights': weights,
                        'feature_exclusions': {f: 'road_context_mismatch' for f in selected if f in ROAD_FIELDS and not compatible},
                        'dimension_values': {f: values.get(f) for f in selected}})
     ranked.sort(key=lambda item: (item['distance'], str(item['features'].get('site_id'))))
@@ -188,6 +202,7 @@ def rank_pca(query, candidates, prepared, selected, k=10, weighting_mode='equal_
     for item, weight in zip(ranked, weights):
         item['weight'] = float(weight)
     active = [f for f in selected if any(f in item['used_features'] for item in ranked)]
-    return {'cases': ranked, 'active_features': active,
+    return {'cases': ranked, 'active_features': active, 'reference':reference,
+            'minimum_available_weight_share':threshold,'rejected_cases':rejected,
             'excluded_features': {f: 'unavailable_for_all_candidates' for f in selected if f not in active},
             'filter_level': prepared['level'], 'filter_explanation': prepared['explanation']}

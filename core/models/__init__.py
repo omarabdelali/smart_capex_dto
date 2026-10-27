@@ -19,6 +19,8 @@ from .features import (
 from .kpi import PreLaunchKPI, MAOSMonthlyKPI
 from .feature_sync import FeatureSyncJob
 from .network_event import RadioNetworkEvent
+from .analysis_profile import AnalysisProfile,AnalysisProfileDefault,AnalysisProfileRevision,AnalysisSetup
+from .analysis_episode import AnalysisEpisode,AnalysisEpisodeMember
 
 __all__ = [
     'Site',
@@ -36,4 +38,10 @@ __all__ = [
     'MAOSMonthlyKPI',
     'FeatureSyncJob',
     'RadioNetworkEvent',
+    'AnalysisProfile',
+    'AnalysisProfileDefault',
+    'AnalysisProfileRevision',
+    'AnalysisSetup',
+    'AnalysisEpisode',
+    'AnalysisEpisodeMember',
 ]

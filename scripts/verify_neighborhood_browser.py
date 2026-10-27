@@ -71,6 +71,7 @@ def verify():
         page.screenshot(path=str(output/'pca-tier-partition.png'))
         checks.append('95 fields; mandatory tier policy; standard PCA fit/ranking contains only standard cases')
         page.get_by_role('button',name='CBR impact',exact=True).click()
+        page.get_by_label('CBR prediction engine').select_option('legacy')
         page.locator('.cbr .search input').fill('MED_0007')
         page.locator('.cbr .matches button').filter(has_text='106008').click(timeout=30000)
         with page.expect_response(lambda r:'/cbr/impact/' in r.url,timeout=180000) as pending:

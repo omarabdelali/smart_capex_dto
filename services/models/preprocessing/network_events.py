@@ -238,6 +238,8 @@ def detect_and_save_events():
             site.is_launched=site.pk in site_dates
             site.launch_date=site_dates.get(site.pk)
         Site.objects.bulk_update(sites,['is_launched','launch_date'],batch_size=500)
+    from services.models.prediction.analysis_episodes import refresh_episodes
+    stats['analysis_episodes']=refresh_episodes()
     return stats
 
 

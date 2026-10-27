@@ -9,6 +9,7 @@
       <span class="mode-badge">Retrieval only</span>
     </header>
 
+    <AnalysisProfilePicker purpose="similarity" :current-settings="currentProfileSettings" :applied="appliedProfile" @change="changeProfile" />
     <section class="search-card" aria-label="Choose a query site">
       <label for="site-search">Search by site ID, site name, or cell name</label>
       <div class="search-row">
@@ -39,8 +40,9 @@
             </details>
           </details>
         </section>
+        <label><input type="checkbox" v-model="allowFilterRelaxation"> Allow technology/band relaxation for small pools</label>
         <label>Weighting mode <select v-model="weightingMode"><option value="equal_per_feature">Equal per feature (current default)</option><option value="equal_per_group">Equal per group</option></select></label>
-        <p v-if="representation === 'original' && weightingMode === 'equal_per_feature'" class="scope-note">Legacy mode: deselected non-road features can retain a small fallback weight until production. The comparison table shows every actual weight. Equal per group and PCA use only selected dimensions.</p>
+        <p v-if="!appliedProfile?.id && representation === 'original' && weightingMode === 'equal_per_feature'" class="scope-note">Legacy mode: deselected non-road features can retain a small fallback weight until production. The comparison table shows every actual weight. Equal per group and PCA use only selected dimensions.</p>
         <p class="scope-note">Roads are optional and uncalibrated, capped at 5% of distance weight. Select a non-road feature too. Road values describe the current snapshot, not verified event-time conditions.</p>
         <div class="picker-heading"><div><strong>Features used for similarity</strong><p>Select available query features. Missing candidate values are skipped for that case.</p></div>
           <span>{{ selectedFeatures.length }} selected</span></div>
@@ -91,6 +93,8 @@
       <div class="ranking-summary">
         <strong>{{ results.candidate_pool_size.toLocaleString() }}</strong> cases scored from {{ results.total_detected_event_sites.toLocaleString() }} detected event sites
         <span>{{ results.filter_explanation }}</span>
+        <span>Minimum shared weight: {{ percent(results.minimum_available_weight_share ?? .6) }}. {{ results.rejected_cases?.length || 0 }} cases rejected for insufficient support.</span>
+        <span v-if="results.reference">Range reference: {{ results.reference.reference_id || results.reference.kind }}<template v-if="results.reference.training_before">; training before {{ results.reference.training_before }}</template>.</span>
         <span>{{ results.active_features.length }} selected dimensions · {{ results.weighting_method === 'equal_per_group' ? 'group-balanced weights' : results.representation === 'pca' ? 'equal selected-dimension weights' : 'per-feature weights with existing non-road defaults' }} · road weight capped at 5%.</span>
         <span v-if="Object.keys(results.excluded_features).some(key => results.excluded_features[key] === 'unavailable_for_all_candidates')">Some selected features were unavailable across the candidate pool and were excluded.</span>
       </div>
@@ -110,6 +114,7 @@
             <span>{{ item.profile_months_available }} / 3 months</span>
             <span>{{ percent(item.profile_completeness) }} profile coverage</span>
             <span>{{ item.used_features.length }} dimensions used</span>
+            <span>{{ percent(item.available_weight_share ?? 1) }} selected weight available</span>
             <span>Current map cluster {{ item.cluster_id }}</span>
           </div>
           <button type="button" class="map-button" @click="showOnMap">Show query and similar sites on map</button>
@@ -136,13 +141,16 @@
 
 <script>
 import axios from 'axios';
+import AnalysisProfilePicker from './AnalysisProfilePicker.vue';
+import {analysisApi} from '../analysisProfiles';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 export default {
   name: 'SimilarityExplorerView',
   emits: ['show-on-map'],
+  components:{AnalysisProfilePicker},
   setup(_props, { emit }) {
-    const API = 'http://localhost:8000/api';
+    const API = analysisApi.defaults.baseURL;
     const searchText = ref('');
     const suggestions = ref([]);
     const selectedSite = ref(null);
@@ -154,7 +162,13 @@ export default {
     const featureOptions = ref([]);
     const selectedFeatures = ref([]);
     const weightingMode = ref('equal_per_feature');
+    const allowFilterRelaxation = ref(true);
     const representation = ref('original');
+    const profileId=ref(''),appliedProfile=ref(null),profileSettings=ref(null);
+    let applyProfileControls=true,changingProfile=false;
+    const currentProfileSettings=computed(()=>({...profileSettings.value,similarity_features:representation.value==='pca'?[...(pcaReport.value?.source_features||[]),...selectedFeatures.value.filter(f=>!f.startsWith('PC'))]:selectedFeatures.value,representation:representation.value,weighting_mode:weightingMode.value,allow_filter_relaxation:allowFilterRelaxation.value}));
+    function changeProfile(p){profileId.value=p.id;profileSettings.value=p.settings;appliedProfile.value=null;selectionByMode.clear();applyProfileControls=true;if(selectedSite.value)void loadFeatureAvailability(selectedSite.value);}
+
     const pcaReport = ref(null);
     const featureFilter = ref('');
     let rankingRequest = 0;
@@ -186,10 +200,12 @@ export default {
       return [...groups.values()];
     });
     const resultsStale = computed(() => results.value && (
-      [...selectedFeatures.value].sort().join('|') !== [...results.value.selected_features].sort().join('|') || weightingMode.value !== results.value.weighting_method || representation.value !== results.value.representation
+      [...selectedFeatures.value].sort().join('|') !== [...results.value.selected_features].sort().join('|') || weightingMode.value !== results.value.weighting_method || allowFilterRelaxation.value !== results.value.allow_filter_relaxation || representation.value !== results.value.representation
     ));
 
     watch(representation, (_mode, previous) => {
+      if(changingProfile)return;
+      applyProfileControls=false;
       selectionByMode.set(previous, [...selectedFeatures.value]);
       pcaReport.value = null;
       featureFilter.value = '';
@@ -248,8 +264,15 @@ export default {
       availabilityLoading.value = true;
       featureError.value = '';
       try {
-        const response = await axios.get(`${API}/similarity/features/`, { params: { site_id: site.site_id, representation: representation.value } });
+        const response = await analysisApi.get('/similarity/features/', { params: { profile_id:profileId.value,site_id: site.site_id, representation: applyProfileControls && profileId.value!=='manual'?undefined:representation.value, allow_filter_relaxation:applyProfileControls && profileId.value!=='manual'?undefined:String(allowFilterRelaxation.value) } });
         if (requestId !== availabilityRequest || selectedSite.value?.site_id !== site.site_id) return;
+        appliedProfile.value=response.data.analysis_profile;
+        if(applyProfileControls && response.data.analysis_profile?.settings){
+          const settings=response.data.analysis_profile.settings;profileSettings.value=settings;
+          changingProfile=true;representation.value=response.data.representation;weightingMode.value=settings.weighting_mode;allowFilterRelaxation.value=settings.allow_filter_relaxation;
+          queueMicrotask(()=>{changingProfile=false;});
+        }
+        applyProfileControls=false;
         featureOptions.value = response.data.features || [];
         pcaReport.value = response.data.pca || null;
         availabilityAsOf.value = response.data.as_of_date || null;
@@ -264,6 +287,13 @@ export default {
         if (requestId === availabilityRequest) availabilityLoading.value = false;
       }
     }
+    watch(allowFilterRelaxation, () => {
+      if(changingProfile)return;
+      if (selectedSite.value && representation.value === 'pca') {
+        pcaReport.value = null;
+        void loadFeatureAvailability(selectedSite.value);
+      }
+    });
     function selectAllAvailable() {
       selectedFeatures.value = featureOptions.value.filter(feature => feature.available && feature.selectable !== false).map(feature => feature.key);
     }
@@ -277,8 +307,8 @@ export default {
       error.value = '';
       results.value = null;
       try {
-        const response = await axios.get(`${API}/similarity/search/`, {
-          params: { site_id: selectedSite.value.site_id, k: 10, features: selectedFeatures.value.join(','), weighting_mode: weightingMode.value, representation: representation.value, pca_fit_id: pcaReport.value?.fit_id },
+        const response = await analysisApi.get('/similarity/search/', {
+          params: { profile_id:profileId.value,site_id: selectedSite.value.site_id, k: 10, features: selectedFeatures.value.join(','), weighting_mode: weightingMode.value, allow_filter_relaxation: String(allowFilterRelaxation.value), representation: representation.value, pca_fit_id: pcaReport.value?.fit_id },
         });
         if (requestId === rankingRequest && siteId === selectedSite.value?.site_id) results.value = response.data;
       } catch (requestError) {
@@ -317,7 +347,7 @@ export default {
       emit('show-on-map', { querySiteId: selectedSite.value.site_id, siteIds: [...new Set([selectedSite.value.site_id, ...results.value.cases.map(item => item.site_id)])] });
     }
     onBeforeUnmount(() => { rankingRequest += 1; availabilityRequest += 1; if (searchTimer) window.clearTimeout(searchTimer); });
-    return { tierScheme, representation, pcaReport, featureFilter, queryDimension, caseDimension, weightingMode, availabilityAsOf, searchText, suggestions, selectedSite, results, loading, error, searchError, availabilityLoading, featureOptions, selectedFeatures, featureError, featureGroups, featureRows, resultsStale, selectSite, chooseFirst, runSearch, selectAllAvailable, clearFeatureSelection, percent, formatMetric, eventLabel, isUnavailable, displayFeature, featureStatus, featureWeight, showOnMap };
+    return { currentProfileSettings,appliedProfile,changeProfile,allowFilterRelaxation, tierScheme, representation, pcaReport, featureFilter, queryDimension, caseDimension, weightingMode, availabilityAsOf, searchText, suggestions, selectedSite, results, loading, error, searchError, availabilityLoading, featureOptions, selectedFeatures, featureError, featureGroups, featureRows, resultsStale, selectSite, chooseFirst, runSearch, selectAllAvailable, clearFeatureSelection, percent, formatMetric, eventLabel, isUnavailable, displayFeature, featureStatus, featureWeight, showOnMap };
   },
 };
 </script>

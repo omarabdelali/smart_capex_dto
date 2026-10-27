@@ -69,6 +69,7 @@ def verify():
         page.screenshot(path=str(artifacts / 'desktop-similarity.png'))
 
         page.get_by_role('button', name='CBR impact', exact=True).click()
+        page.get_by_label('CBR prediction engine').select_option('legacy')
         page.locator('.cbr .search input').fill('NAB_0041')
         page.locator('.cbr .matches button').first.click(timeout=30000)
         page.get_by_role('button', name='Predict impact', exact=True).click()

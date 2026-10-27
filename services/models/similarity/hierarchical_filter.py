@@ -5,14 +5,14 @@ Implements hierarchical filtering to select relevant historical cases for predic
 Filters cases based on configuration similarity before computing Gower distance.
 
 Three-level filter (Spec Section 9.2):
-1. event_type must match exactly
+1. event_type and tier_scheme must match exactly (never relaxed)
 2. tech_added must match exactly
 3. bands_added overlap ≥ 50%
 
 Relaxation logic:
 - If pool < 3 after all filters, relax filter 3 (bands)
 - If still < 3, relax filter 2 (tech)
-- If still < 3, use global model (all cases)
+- If still < 3, retain the event/scheme pool and report low support
 
 Reference: Spec Section 9.2 (Hierarchical Filtering)
 """
@@ -58,60 +58,23 @@ class HierarchicalFilter:
         Returns:
             List of indices of filtered cases, optionally with filter level (0-3)
         """
-        # This partition must survive every relaxation, including global fallback.
-        query_scheme = query.get('tier_scheme')
-        compatible = [i for i,c in enumerate(candidates) if query_scheme is None or c.get('tier_scheme') == query_scheme]
-        # Extract query configuration
-        query_event = query.get('event_type', '')
-        query_tech = query.get('tech_added', '')
-        query_bands = self._parse_bands(query.get('bands_added', ''))
-        
-        # Level 1: event_type match
-        level1_indices = []
-        for i, candidate in enumerate(candidates):
-            if i not in compatible:
-                continue
-            if candidate.get('event_type', '') == query_event:
-                level1_indices.append(i)
-        
-        logger.debug(f"Level 1 (event_type={query_event}): {len(level1_indices)} cases")
-        
-        if len(level1_indices) >= self.min_pool_size:
-            # Level 2: tech_added match
-            level2_indices = []
-            for i in level1_indices:
-                if candidates[i].get('tech_added', '') == query_tech:
-                    level2_indices.append(i)
-            
-            logger.debug(f"Level 2 (tech_added={query_tech}): {len(level2_indices)} cases")
-            
-            if len(level2_indices) >= self.min_pool_size:
-                # Level 3: bands overlap
-                level3_indices = []
-                for i in level2_indices:
-                    candidate_bands = self._parse_bands(candidates[i].get('bands_added', ''))
-                    overlap = self._compute_band_overlap(query_bands, candidate_bands)
-                    
-                    if overlap >= self.band_overlap_threshold:
-                        level3_indices.append(i)
-                
-                logger.debug(f"Level 3 (bands overlap ≥{self.band_overlap_threshold}): {len(level3_indices)} cases")
-                
-                if len(level3_indices) >= self.min_pool_size:
-                    logger.info(f"Using filter level 3 (full hierarchy) with {len(level3_indices)} cases")
-                    return (level3_indices, 3) if return_filter_level else level3_indices
-                else:
-                    logger.info(f"Relaxed to filter level 2 (event+tech) with {len(level2_indices)} cases")
-                    return (level2_indices, 2) if return_filter_level else level2_indices
-            else:
-                logger.info(f"Relaxed to filter level 1 (event only) with {len(level1_indices)} cases")
-                return (level1_indices, 1) if return_filter_level else level1_indices
+        # Event type and tier scheme are mandatory, including low-support pools.
+        compatible = [i for i,c in enumerate(candidates)
+            if c.get('tier_scheme') == query.get('tier_scheme')
+            and c.get('event_type') == query.get('event_type')]
+        technologies = [i for i in compatible if candidates[i].get('tech_added') == query.get('tech_added')]
+        bands = [i for i in technologies if self._compute_band_overlap(
+            self._parse_bands(query.get('bands_added')),self._parse_bands(candidates[i].get('bands_added'))) >= self.band_overlap_threshold]
+        if not query.get('_allow_filter_relaxation',True):
+            indices,level=bands,3
+        elif len(bands) >= self.min_pool_size:
+            indices,level=bands,3
+        elif len(technologies) >= self.min_pool_size:
+            indices,level=technologies,2
         else:
-            # Fallback to global model (all cases)
-            logger.warning(f"Insufficient cases at level 1. Using global model with {len(candidates)} cases")
-            all_indices = compatible
-            return (all_indices, 0) if return_filter_level else all_indices
-    
+            indices,level=compatible,1
+        return (indices,level) if return_filter_level else indices
+
     def _parse_bands(self, bands_str: str) -> Set[str]:
         """
         Parse bands string into set of band identifiers.
@@ -227,7 +190,7 @@ class HierarchicalFilter:
         stats = self.get_filter_statistics(query, candidates)
         
         explanations = {
-            0: f"Used global model (all {stats['total_cases']} cases) because insufficient matches at event level.",
+            0: "No compatible event type and tier scheme cases.",
             1: f"Filtered by event type '{stats['query_event']}' → {stats['level1_event_match']} cases (relaxed from tech/band filters).",
             2: f"Filtered by event '{stats['query_event']}' + tech '{stats['query_tech']}' → {stats['level2_event_tech_match']} cases (relaxed band filter).",
             3: f"Full hierarchical filter: event '{stats['query_event']}' + tech '{stats['query_tech']}' + bands {stats['query_bands']} → {stats['level3_full_match']} cases."

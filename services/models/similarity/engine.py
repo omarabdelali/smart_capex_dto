@@ -3,10 +3,11 @@ from services.models.similarity.gower_distance import GowerDistance
 from services.models.similarity.hierarchical_filter import HierarchicalFilter
 from services.models.similarity.kernel_weights import KernelWeights
 from services.models.similarity.weighting import pair_weights
+from .calibration import policy,reference_ranges,available_weight_share
 from services.models.features.road_loader import ROAD_FIELDS
 
 
-def rank_similar_cases(query, candidates, k=10, min_pool_size=3, selected_features=None, weighting_mode='equal_per_feature'):
+def rank_similar_cases(query, candidates, k=10, min_pool_size=3, selected_features=None, weighting_mode='equal_per_feature', minimum_available_weight_share=None, feature_ranges=None, strict_selection=False):
     """Rank cases over selected, available dimensions using equal feature weights."""
     all_features = GowerDistance.NUMERIC_FEATURES + GowerDistance.CATEGORICAL_FEATURES
     if not candidates:
@@ -18,6 +19,11 @@ def rank_similar_cases(query, candidates, k=10, min_pool_size=3, selected_featur
 
     hierarchical = HierarchicalFilter(min_pool_size=min_pool_size)
     indices, level = hierarchical.filter_cases(query, candidates, return_filter_level=True)
+    if not indices:
+        return {'cases':[],'filter_level':level,'active_features':[],'excluded_features':{},
+            'filter_explanation':'No cases match the mandatory event type and tier scheme, with the requested technology/band policy.',
+            'minimum_available_weight_share':policy()['minimum_available_weight_share'] if minimum_available_weight_share is None else minimum_available_weight_share,
+            'rejected_cases':[],'reference':reference_ranges(query,[] ,feature_ranges)[1]}
     requested = [f for f in dict.fromkeys(selected_features if selected_features is not None else [f for f in all_features if f not in ROAD_FIELDS]) if f not in ('site_id','cluster_id','cluster_avg_users','tier_scheme')]
     excluded = {}
     query_available = []
@@ -44,12 +50,27 @@ def rank_similar_cases(query, candidates, k=10, min_pool_size=3, selected_featur
             'active_features': [], 'excluded_features': excluded,
         }
 
-    distance = GowerDistance()
-    distance.fit_ranges([
-        candidates[index] if query.get('road_context_signature') and query.get('road_context_signature') == candidates[index].get('road_context_signature')
-        else {**candidates[index], **dict.fromkeys(ROAD_FIELDS)} for index in indices
-    ])
-    actual_weights = {index:pair_weights(distance,query,candidates[index],active_features,weighting_mode) for index in indices}
+    threshold=policy()['minimum_available_weight_share'] if minimum_available_weight_share is None else float(minimum_available_weight_share)
+    if not 0 <= threshold <= 1:
+        raise ValueError('minimum_available_weight_share must be between 0 and 1')
+    ranges,reference=reference_ranges(query,[candidates[i] for i in indices],feature_ranges)
+    distance = GowerDistance(feature_ranges=ranges)
+    if query.get('feature_as_of_date') or feature_ranges is not None:
+        unsupported=[f for f in active_features if f in distance.NUMERIC_FEATURES and f not in ranges]
+        active_features=[f for f in active_features if f not in unsupported]
+        for f in unsupported:
+            excluded[f]='unavailable_in_frozen_reference'
+    masked={f:None for f in distance.NUMERIC_FEATURES if f not in ranges} if query.get('feature_as_of_date') or feature_ranges is not None else {}
+    shares={i:available_weight_share(distance,query,{**candidates[i],**masked},query_available,weighting_mode) for i in indices}
+    rejected=[{'site_id':candidates[i].get('site_id'),'available_weight_share':shares[i],
+        'reason':'available_weight_share_below_threshold'} for i in indices if shares[i]+1e-12 < threshold]
+    indices=[i for i in indices if shares[i]+1e-12 >= threshold]
+    actual_weights = {index:pair_weights(distance,query,candidates[index],active_features,weighting_mode,strict_selection=strict_selection) for index in indices}
+    if query.get('feature_as_of_date') or feature_ranges is not None:
+        for i,weights in actual_weights.items():
+            weights={f:w for f,w in weights.items() if f not in distance.NUMERIC_FEATURES or f in ranges}
+            total=sum(weights.values())
+            actual_weights[i]={f:w/total for f,w in weights.items()} if total else {}
     ranked = sorted(
         (
             (index, distance.compute_distance(
@@ -62,15 +83,18 @@ def rank_similar_cases(query, candidates, k=10, min_pool_size=3, selected_featur
     weights = KernelWeights(bandwidth_method='median').compute_weights([item[1] for item in ranked]) if ranked else []
     explanation = hierarchical.explain_filtering(query, candidates, indices, level)
     if not ranked:
-        explanation = 'No comparable cases. Roads require a matching source/buffer/method and at least one selected non-road feature.'
+        explanation = (hierarchical.explain_filtering(query,candidates,indices,level)+
+            ' No cases satisfy the selected dimensions, frozen-reference support and minimum available-weight share.')
     return {
         'filter_level': level,
         'filter_explanation': explanation,
+        'reference': reference, 'minimum_available_weight_share':threshold,'rejected_cases':rejected,
         'active_features': active_features,
         'excluded_features': excluded,
         'cases': [
             {
                 'candidate_index': index,
+                'available_weight_share':shares[index],
                 'distance': float(dist),
                 'similarity': float(1 - dist),
                 'weight': float(weights[pos]),

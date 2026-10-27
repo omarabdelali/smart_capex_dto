@@ -5,7 +5,7 @@ from services.models.features.road_loader import ROAD_FIELDS, road_config
 WEIGHTING_MODES = ('equal_per_feature', 'equal_per_group')
 
 
-def pair_weights(distance, query, candidate, selected, mode):
+def pair_weights(distance, query, candidate, selected, mode, strict_selection=False):
     if mode not in WEIGHTING_MODES:
         raise ValueError('Unknown weighting mode')
     common = [f for f in distance.NUMERIC_FEATURES+distance.CATEGORICAL_FEATURES
@@ -15,6 +15,8 @@ def pair_weights(distance, query, candidate, selected, mode):
     common = [f for f in common if f not in ROAD_FIELDS or (f in selected and roads_compatible)]
     common = [f for f in common if distance._get_feature_group(f) != 'user_context' or f in selected]
     common = [f for f in common if f != 'terrain_relief_class' or f in selected]
+    if strict_selection:
+        common = [f for f in common if f in selected]
     if mode == 'equal_per_group':
         common = [f for f in common if f in selected]
         groups = Counter(distance._get_feature_group(f) for f in common)

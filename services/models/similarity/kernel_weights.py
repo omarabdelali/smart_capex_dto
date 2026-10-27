@@ -28,7 +28,7 @@ class KernelWeights:
         self,
         kernel_type: str = 'gaussian',
         bandwidth: Optional[float] = None,
-        bandwidth_method: str = 'adaptive'
+        bandwidth_method: str = 'median'
     ):
         """
         Initialize kernel weights computer.
@@ -77,6 +77,9 @@ class KernelWeights:
         
         # Normalize if requested
         if normalize:
+            if self.kernel_type == 'gaussian' and len(distances) and h > 0:
+                log_weights = -0.5 * (distances / h) ** 2
+                weights = np.exp(log_weights - np.max(log_weights))
             total = np.sum(weights)
             if total > 0:
                 weights = weights / total
@@ -158,8 +161,9 @@ class KernelWeights:
         
         if self.bandwidth_method == 'median':
             # Use half of median pairwise distance
+            from .calibration import policy
             median_dist = np.median(distances)
-            h = median_dist / 2.0 if median_dist > 0 else 0.1
+            h = median_dist * policy()['kernel_width_factor'] if median_dist > 0 else 0.1
             
         elif self.bandwidth_method == 'scott':
             # Scott's rule: h = n^(-1/5) * σ

@@ -130,7 +130,7 @@ def traffic_history(cache):
         months = defaultdict(set)
         first = {}
         query = MAOSMonthlyKPI.objects.filter(cell__technology='4G',thrp_bits_dl__gt=0)
-        for raw,month in query.values_list('cell__site__site_id','month_date').distinct().iterator(chunk_size=10000):
+        for raw,month in query.order_by().values_list('cell__site__site_id','month_date').distinct().iterator(chunk_size=10000):
             key = by_raw.get(raw,raw)
             months[month].add(key)
             first[key] = min(first.get(key,month),month)

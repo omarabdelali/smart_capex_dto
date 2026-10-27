@@ -46,9 +46,9 @@ class NeighborhoodGeometryTests(SimpleTestCase):
         candidates=[{**query,'site_id':str(i),'tier_scheme':'standard','n_sites_2km':i,'population_tier1':i*i} for i in range(6)]
         candidates.append({**query,'site_id':'allowed','event_type':'OTHER','n_sites_2km':3})
         rank=rank_similar_cases(query,candidates,selected_features=['n_sites_2km'])
-        self.assertEqual([r['features']['site_id'] for r in rank['cases']],['allowed'])
+        self.assertEqual(rank['cases'],[])
         prepared=prepare_pca(query,candidates)
-        self.assertEqual(prepared['report']['candidate_pool_size'],1)
+        self.assertEqual(prepared['report']['candidate_pool_size'],0)
         self.assertFalse(prepared['report']['available'])
 
 
