@@ -1,10 +1,11 @@
 ﻿<template>
 <section class="cbr">
 <header><h2>Event impact prediction</h2><p>Compare recipient-level CBR with the legacy site-launch benchmark.</p></header>
-<label>Prediction engine<select v-model="engine" aria-label="CBR prediction engine"><option value="recipient">Recipient-level CBR</option><option value="legacy">Legacy site-launch benchmark</option></select></label>
+<label>Prediction engine<select v-model="engine" aria-label="CBR prediction engine"><option value="recipient">Recipient-level CBR</option><option value="gain">Counterfactual gains (experimental)</option><option value="legacy">Legacy site-launch benchmark</option></select></label>
 <div class="search"><input v-model="text" placeholder="Search site ID, name, or cell name" @keydown.enter.prevent="choose"><button v-if="engine==='legacy'" :disabled="!site||loading" @click="predict">Predict impact</button><div v-if="matches.length" class="matches"><button v-for="s in matches" :key="s.site_id" @click="select(s)">{{s.site_name}} · {{s.site_id}}</button></div></div>
 <p v-if="site">Selected {{site.site_name}} · {{site.site_id}}</p><p v-if="error" class="error">{{error}}</p><p v-if="loading">Building cases…</p>
 <RecipientCBRPanel v-if="engine==='recipient' && site" :key="site.site_id" :site-id="String(site.site_id)" />
+<CounterfactualGainPanel v-if="engine==='gain' && site" :key="site.site_id" :site-id="String(site.site_id)" />
 <AnalysisProfilePicker v-if="engine==='legacy'" purpose="prediction" :current-settings="legacySettings" :applied="result?.analysis_profile" @change="changeLegacyProfile" />
 <template v-if="result && engine==='legacy'">
 <aside>{{result.query.date_note}}: {{result.query.event_date}}<p>{{result.method_note}}</p><p>{{result.data_note}}</p><p>Legacy intervals describe analog-mean uncertainty; individual prediction coverage is not calibrated.</p><p>{{result.feature_timing_note}}</p><p>Event type and tier scheme stay mandatory. Minimum shared feature weight: {{ Math.round((result.minimum_available_weight_share ?? .6)*100) }}%. {{ result.rejected_cases?.length || 0 }} low-support cases excluded.</p></aside>
@@ -30,11 +31,12 @@ import axios from 'axios';
 import AnalysisProfilePicker from './AnalysisProfilePicker.vue';
 import {analysisApi} from '../analysisProfiles';
 import RecipientCBRPanel from './RecipientCBRPanel.vue';
+import CounterfactualGainPanel from './CounterfactualGainPanel.vue';
 import {computed,nextTick,onBeforeUnmount,ref,watch} from 'vue';
 import {Chart,LineController,LineElement,PointElement,LinearScale,CategoryScale,Tooltip,Legend,Filler} from 'chart.js';
 Chart.register(LineController,LineElement,PointElement,LinearScale,CategoryScale,Tooltip,Legend,Filler);
 const eventLine={id:'eventline',afterDatasetsDraw(c){const i=(c.data.labels||[]).indexOf('Event month (partial)');if(i<0)return;const x=c.scales.x.getPixelForValue(i);c.ctx.save();c.ctx.strokeStyle='#c2410c';c.ctx.setLineDash([5,4]);c.ctx.beginPath();c.ctx.moveTo(x,c.chartArea.top);c.ctx.lineTo(x,c.chartArea.bottom);c.ctx.stroke();c.ctx.restore()}};
-export default{name:'CBRPredictionView',components:{RecipientCBRPanel,AnalysisProfilePicker},setup(){
+export default{name:'CBRPredictionView',components:{RecipientCBRPanel,CounterfactualGainPanel,AnalysisProfilePicker},setup(){
 const engine=ref('recipient'),legacyProfile=ref(''),legacySettings=ref({});
 function changeLegacyProfile(p){legacyProfile.value=p.id;legacySettings.value=p.settings||{};result.value=null;}
 const API='http://localhost:8000/api',text=ref(''),matches=ref([]),site=ref(null),result=ref(null),loading=ref(false),error=ref(''),canvas=ref(null),scope=ref('tier1'),target=ref(''),metric=ref('downlink_traffic_gb'),eventKey=ref('');let timer=null,label='',chart=null;

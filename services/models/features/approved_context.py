@@ -5,6 +5,7 @@ from functools import lru_cache
 import json
 import math
 from pathlib import Path
+from statistics import mean, median
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Avg, Max
@@ -148,34 +149,52 @@ def static_context(site,cache):
 
 def cluster_prelaunch_values(site,cutoff,cache):
     from services.models.features.maos_context import monthly_annotations
+    from .neighborhood import inventory as location_inventory, neighborhood, raw_ids
     from services.models.similarity.historical import month_offset
     previous=month_offset(cutoff,-1)
     cache_key=('_cluster_previous_month',previous)
     if cache_key not in cache:
         rows=MAOSMonthlyKPI.objects.filter(month_date=previous).values('cell__site__site_id').annotate(**monthly_annotations())
         cache[cache_key]={r['cell__site__site_id']:r for r in rows}
-    inventory=static_inventory(cache)
-    members=[r['site_id'] for r in inventory if r['cluster_id']==site.cluster_id] if site.cluster_id!=-1 else []
+    locations,_ = location_inventory(cache)
+    if site.cluster_id==-1:
+        member_locations=neighborhood(site,cutoff,cache)['vis_members']
+        members=raw_ids(member_locations)
+        membership='event-time virtual sample: nearest eligible site per 30-degree bin; origin excluded'
+    else:
+        member_locations=[r for r in locations.values() if r['cluster_id']==site.cluster_id]
+        members=raw_ids(member_locations)
+        membership='real DBSCAN cluster'
     rows=[cache[cache_key][member] for member in members if member in cache[cache_key]]
     sums={}
     for name in monthly_annotations():
         observed=[r[name] for r in rows if r.get(name) is not None]
         sums[name]=sum(observed) if observed else None
     metrics=normalize_monthly_totals(sums)
-    from .neighborhood import inventory as location_inventory
-    locations,_ = location_inventory(cache)
-    member_locations=[r for r in locations.values() if site.cluster_id!=-1 and r['cluster_id']==site.cluster_id]
     reporting_locations=sum(any(key in cache[cache_key] for key in r['site_ids']) for r in member_locations)
+    cell_cache_key=('_cluster_cell_values',previous)
+    if cell_cache_key not in cache:
+        per_site=defaultdict(list)
+        for row in MAOSMonthlyKPI.objects.filter(month_date=previous).values('cell__site__site_id','dl_throughput_kbps','dl_packet_delay_ms').iterator(chunk_size=10000):
+            per_site[row['cell__site__site_id']].append(row)
+        cache[cell_cache_key]=per_site
+    cell_rows=[row for member in members for row in cache[cell_cache_key].get(member,[])]
+    throughputs=[r['dl_throughput_kbps'] for r in cell_rows if r['dl_throughput_kbps'] is not None]
+    delays=[r['dl_packet_delay_ms'] for r in cell_rows if r['dl_packet_delay_ms'] is not None]
     return {'avg_traffic_dl_gb':metrics['thrp_dl_gb'],'avg_users':metrics['active_users_avg'],
         'avg_prb_util_pct':metrics['prb_util_dl_pct'],'avg_cqi':metrics['cqi_avg'],
+        'cluster_capacity_prb':sums['configured_prbs'],
         'cluster_avg_users':metrics['active_users_avg'],
         'cluster_avg_traffic_gb':metrics['thrp_dl_gb']/reporting_locations if metrics['thrp_dl_gb'] is not None and reporting_locations else None,
-        'cluster_pre_dl_throughput_kbps':metrics['dl_throughput_kbps'],
-        'cluster_pre_dl_packet_delay_ms':metrics['dl_packet_delay_ms'],
+        'cluster_pre_dl_throughput_kbps':mean(throughputs) if throughputs else None,
+        'cluster_pre_dl_packet_delay_ms':mean(delays) if delays else None,
+        'cluster_pre_median_dl_packet_delay_ms':median(delays) if delays else None,
+        'cluster_pre_active_users':metrics['active_users_avg'],
+        'cluster_pre_queued_users_dl':sums['queued_users_dl'],'cluster_pre_queued_users_ul':sums['queued_users_ul'],
         'cluster_pre_cell_availability_pct':metrics['cell_availability_pct'],
         'cluster_prelaunch_support':{'month':previous.isoformat(),'member_sites':len(member_locations),
             'reporting_sites':reporting_locations,'reporting_cells':sums.get('reporting_cells'),
-            'membership':'real DBSCAN cluster; noise has no real cluster (virtual traffic sample is separate)',
+            'membership':membership,'throughput_cells':len(throughputs),'delay_cells':len(delays),
             'active_users_aggregation':'sum of cell averages'}}
 
 
@@ -204,7 +223,9 @@ def popup_context(site):
     baseline=cluster_prelaunch_values(site,cutoff,cache)
     context=static_context(site,cache)
     fields=('cluster_id','cluster_size','cluster_density_sites_per_km2',
-            'cluster_avg_traffic_gb','cluster_avg_users','dist_to_cluster_centroid_m')
+            'cluster_avg_traffic_gb','cluster_avg_users','dist_to_cluster_centroid_m',
+            'cluster_pre_dl_throughput_kbps','cluster_pre_dl_packet_delay_ms','cluster_pre_median_dl_packet_delay_ms',
+            'cluster_pre_active_users','cluster_pre_queued_users_dl','cluster_pre_queued_users_ul')
     combined={**context,**baseline}
     result={'cluster_prelaunch':baseline,'cluster_context':{key:combined.get(key) for key in fields},
         'configuration_support':post_event_configuration(site,cutoff)['post_event_configuration_support']}

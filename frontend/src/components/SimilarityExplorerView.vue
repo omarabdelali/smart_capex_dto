@@ -117,7 +117,7 @@
             <span>{{ percent(item.available_weight_share ?? 1) }} selected weight available</span>
             <span>Current map cluster {{ item.cluster_id }}</span>
           </div>
-          <button type="button" class="map-button" @click="showOnMap">Show query and similar sites on map</button>
+          <button type="button" class="map-button" @click="showOnMap(item)">Compare this site on map</button>
           <details class="feature-details">
             <summary>{{ results.representation === 'pca' ? 'Selected PCA dimensions and categorical context' : 'All specification similarity features' }} ({{ featureRows.length }})</summary>
             <div class="feature-table-wrap"><table><thead><tr><th>Feature</th><th>Query site</th><th>Similar site</th><th>Weight</th><th>Score</th></tr></thead>
@@ -342,9 +342,9 @@ export default {
       if (typeof value === 'boolean') return value ? 'Yes' : 'No';
       return typeof value === 'number' ? (value !== 0 && Math.abs(value) < 0.001 ? value.toExponential(3) : value.toLocaleString(undefined, { maximumFractionDigits: 3 })) : String(value);
     }
-    function showOnMap() {
+    function showOnMap(item) {
       if (!results.value || !selectedSite.value) return;
-      emit('show-on-map', { querySiteId: selectedSite.value.site_id, siteIds: [...new Set([selectedSite.value.site_id, ...results.value.cases.map(item => item.site_id)])] });
+      emit('show-on-map', { querySiteId: selectedSite.value.site_id, querySiteName:selectedSite.value.site_name, selectedCaseId:item?.site_id, cases:results.value.cases.map(site=>({site_id:site.site_id,site_name:site.site_name,similarity:site.similarity,event_date:site.event_date,event_type:site.event_type})), siteIds: [...new Set([selectedSite.value.site_id, ...results.value.cases.map(site => site.site_id)])] });
     }
     onBeforeUnmount(() => { rankingRequest += 1; availabilityRequest += 1; if (searchTimer) window.clearTimeout(searchTimer); });
     return { currentProfileSettings,appliedProfile,changeProfile,allowFilterRelaxation, tierScheme, representation, pcaReport, featureFilter, queryDimension, caseDimension, weightingMode, availabilityAsOf, searchText, suggestions, selectedSite, results, loading, error, searchError, availabilityLoading, featureOptions, selectedFeatures, featureError, featureGroups, featureRows, resultsStale, selectSite, chooseFirst, runSearch, selectAllAvailable, clearFeatureSelection, percent, formatMetric, eventLabel, isUnavailable, displayFeature, featureStatus, featureWeight, showOnMap };

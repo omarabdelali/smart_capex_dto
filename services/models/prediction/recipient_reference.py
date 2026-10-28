@@ -10,8 +10,8 @@ from datetime import date
 from .pair_cases import PAIR_NUMERIC
 
 
-def freeze_pair_reference(analysis_unit='event'):
-    base=Path(settings.BASE_DIR)/'data/calibration';source=base/('episode_recipient_cases.jsonl' if analysis_unit=='episode' else 'event_recipient_cases.jsonl')
+def freeze_pair_reference(analysis_unit='event',source_path=None,reference_path=None):
+    base=Path(settings.BASE_DIR)/'data/calibration';source=Path(source_path) if source_path else base/('episode_recipient_cases.jsonl' if analysis_unit=='episode' else 'event_recipient_cases.jsonl')
     rows=[]
     with source.open(encoding='utf-8') as stream:
         for line in stream:
@@ -21,7 +21,7 @@ def freeze_pair_reference(analysis_unit='event'):
     manifest=json.loads(source.with_suffix('.manifest.json').read_text(encoding='utf-8'))
     payload={'dataset_sha256':manifest['sha256'],'profiles':len(rows),'ranges_before':{cutoff:fit_ranges([r for r in rows if r['date']<cutoff],PAIR_NUMERIC) for cutoff in boundaries}}
     payload['reference_id']=hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest()[:24]
-    path=base/('recipient_episode_reference.json' if analysis_unit=='episode' else 'recipient_reference.json');temporary=path.with_suffix('.tmp');temporary.write_text(json.dumps(payload,indent=2),encoding='utf-8');temporary.replace(path)
+    path=Path(reference_path) if reference_path else base/('recipient_episode_reference.json' if analysis_unit=='episode' else 'recipient_reference.json');temporary=path.with_suffix('.tmp');temporary.write_text(json.dumps(payload,indent=2),encoding='utf-8');temporary.replace(path)
     return {'reference_id':payload['reference_id'],'profiles':len(rows)}
 
 
@@ -30,12 +30,15 @@ def _read(path,mtime):
     return json.loads(Path(path).read_text(encoding='utf-8'))
 
 
-def pair_reference(cutoff,analysis_unit='event'):
-    path=Path(settings.BASE_DIR)/'data/calibration'/('recipient_episode_reference.json' if analysis_unit=='episode' else 'recipient_reference.json')
+def pair_reference(cutoff,analysis_unit='event',source_path=None,reference_path=None):
+    path=Path(reference_path) if reference_path else Path(settings.BASE_DIR)/'data/calibration'/('recipient_episode_reference.json' if analysis_unit=='episode' else 'recipient_reference.json')
     if not path.exists():
         return {},{'status':'unavailable','reason':'missing_frozen_pair_reference'}
     artifact=_read(str(path),path.stat().st_mtime_ns)
-    manifest=json.loads((path.parent/('episode_recipient_cases.manifest.json' if analysis_unit=='episode' else 'event_recipient_cases.manifest.json')).read_text(encoding='utf-8'))
+    manifest_path=Path(source_path).with_suffix('.manifest.json') if source_path else path.parent/('episode_recipient_cases.manifest.json' if analysis_unit=='episode' else 'event_recipient_cases.manifest.json')
+    if not manifest_path.exists():
+        return {},{'status':'unavailable','reason':'missing_training_manifest'}
+    manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
     if manifest['sha256']!=artifact['dataset_sha256']:
         return {},{'status':'unavailable','reason':'pair_reference_dataset_revision_mismatch'}
     keys=[k for k in artifact['ranges_before'] if k<=cutoff]

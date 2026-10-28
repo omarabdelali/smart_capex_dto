@@ -23,6 +23,8 @@ def monthly_annotations():
     cqi = Q(cqi_weighted_sum__isnull=False,cqi_sample_count__gt=0)
     return {
         'traffic_users':Sum('traffic_user_avg'),'active_users':Sum('active_users_avg'),'traffic_bits':Sum('thrp_bits_dl'),
+        'queued_users_dl':Sum('queued_users_dl'),'queued_users_ul':Sum('queued_users_ul'),
+        'configured_prbs':Sum('prb_dl_available',filter=Q(prb_dl_available__gte=0)),
         'dl_bits':Sum('thrp_bits_dl',filter=throughput),'dl_last_tti_bits':Sum('thrp_bits_dl_last_tti',filter=throughput),'dl_time_ms':Sum('thrp_time_dl_ms',filter=throughput),
         'prb_used':Sum('prb_dl_used_avg',filter=prb),'prb_available':Sum('prb_dl_available',filter=prb),
         'delay_time_ms':Sum('dl_packet_delay_time_ms',filter=delay),'delay_packets':Sum('dl_packet_delay_packets',filter=delay),

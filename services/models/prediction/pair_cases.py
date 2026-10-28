@@ -42,6 +42,8 @@ def event_bands(event,by_cell):
 
 
 def relative_bearing(bearing,azimuths):
+    if bearing is None:
+        return None
     values=[abs((bearing-float(a)+180)%360-180) for a in azimuths if a is not None and math.isfinite(float(a))]
     return min(values) if values else None
 
@@ -52,7 +54,7 @@ def prior_value(rows,cutoff,key):
     return (median(observed) if len(observed)==3 else None),len(observed)
 
 
-def export_pair_cases(path,progress=print,analysis_unit='event'):
+def export_pair_cases(path,progress=print,analysis_unit='event',include_origin=False):
     """One row per event/recipient; all eligible tiers, not virtual sample expansion."""
     path=Path(path);path.parent.mkdir(parents=True,exist_ok=True)
     working=path.with_suffix('.tmp')
@@ -82,6 +84,9 @@ def export_pair_cases(path,progress=print,analysis_unit='event'):
                 cutoffs[cache_key]=neighborhood(origin,cutoff,cache)
             context=cutoffs[cache_key]
             members=context['scopes']['tier1']+context['scopes']['tier2']
+            if include_origin:
+                members=[{'site_id':context['canonical_site_id'],'site_name':origin.site_name,'distance_m':0.,'bearing_deg':None,
+                    'tier':'origin','distance_band':None,'member_recent_launch':None}]+members
             virtual={m['site_id'] for m in context['vis_members']}
             bands_for_event=event_bands(event,by_cell)
             azimuths=[by_cell[key]['azimuth'] for key in event.details.get('cell_ids',[]) if key in by_cell]
@@ -113,6 +118,8 @@ def export_pair_cases(path,progress=print,analysis_unit='event'):
                     'same_band':bool(bands_for_event & bands) if bands_for_event and bands else None,
                     **loads,**event_magnitude(event,prbs),'baseline_support':support,'outcomes':outcomes,'outcome_months':outcome_months,
                     'member_recent_launch':member['member_recent_launch']}
+                if include_origin:
+                    row['recipient_role']='origin' if member['tier']=='origin' else 'neighbor'
                 line=json.dumps(row,allow_nan=False,separators=(',',':'))+'\n'
                 stream.write(line);digest.update(line.encode());count+=1;by_type[event.event_type]+=1
             event_count+=1
@@ -123,13 +130,15 @@ def export_pair_cases(path,progress=print,analysis_unit='event'):
     with working.open('rb') as source:
         for chunk in iter(lambda:source.read(1024*1024),b''):
             digest.update(chunk)
-    summary={'version':'pair-episodes-v1' if analysis_unit=='episode' else 'pair-cases-v2','analysis_unit':analysis_unit,'events':event_count,'pairs':count,'pairs_by_type':dict(by_type),
+    summary={'includes_origin':include_origin,'version':'gain-cases-v1' if include_origin else 'pair-episodes-v1' if analysis_unit=='episode' else 'pair-cases-v2','analysis_unit':analysis_unit,'events':event_count,'pairs':count,'pairs_by_type':dict(by_type),
         'latest_complete_month':latest.isoformat(),'sha256':digest.hexdigest(),
         'baseline':'Three complete months required per input/target KPI; missing stays NULL',
         'target':'Observed recipient KPI minus three-month median, offsets +1..+6; observational, not causal',
         'selection':'All eligible physical T1/T2 members; virtual_sample_member indicates the separate one-per-bin sample',
         'same_band':'Event bands overlap recipient cell bands with positive traffic before cutoff; unknown remains NULL',
         'relative_bearing':'Minimum absolute circular angle to an affected cell plan azimuth (0..180); NULL if unknown'}
+    if include_origin:
+        summary.update(selection='One event-origin row plus each eligible physical T1/T2 recipient, once per episode',gain_target_note='Stored median changes are intermediate eligibility outcomes. Gain forecasts reconstruct mean-baseline matched-control DiD from source KPIs, censoring later exposure, only for completed historical outcomes.')
     working.replace(path)
     path.with_suffix('.manifest.json').write_text(json.dumps(summary,indent=2),encoding='utf-8')
     return summary

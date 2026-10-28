@@ -76,12 +76,13 @@ class PairRanker:
         self._recipient_keys=np.array([r['recipient_site_id'] for r in rows])
 
     def eligible(self,query,allow_relaxation=True):
-        cache_key=(query['event_type'],query['tier_scheme'],query['event_site_id'],query['event_key'],query.get('technology'),tuple(query['bands']),allow_relaxation,query.get('analysis_unit','event'),query.get('action_signature'))
+        cache_key=(query['event_type'],query['tier_scheme'],query['event_site_id'],query['event_key'],query.get('technology'),tuple(query['bands']),allow_relaxation,query.get('analysis_unit','event'),query.get('action_signature'),query.get('recipient_role','neighbor'))
         if cache_key in self._eligible_cache:
             return self._eligible_cache[cache_key]
         indices=[i for i,r in enumerate(self.rows) if r['event_type']==query['event_type'] and r['tier_scheme']==query['tier_scheme']
                  and r['event_site_id']!=query['event_site_id'] and r['event_key']!=query['event_key']
-                 and r.get('analysis_unit','event')==query.get('analysis_unit','event') and r.get('action_signature')==query.get('action_signature')]
+                 and r.get('analysis_unit','event')==query.get('analysis_unit','event') and r.get('action_signature')==query.get('action_signature')
+                 and r.get('recipient_role','neighbor')==query.get('recipient_role','neighbor')]
         tech=[i for i in indices if self.rows[i].get('technology')==query.get('technology')]
         bands=[i for i in tech if (not query['bands'] and not self.rows[i]['bands']) or
                len(set(query['bands'])&set(self.rows[i]['bands']))/max(1,len(set(query['bands'])|set(self.rows[i]['bands'])))>=.5]

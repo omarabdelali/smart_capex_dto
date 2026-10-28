@@ -24,7 +24,7 @@ SCOPES=('tier1','tier2','cluster','virtual_cluster','distance_0_2','distance_2_5
 
 
 def forecast(site,event,metric='downlink_traffic_gb',scope='tier1',method='pair_cbr',ramp=False,
-             data=None,training=None,bootstrap_draws=None,recipient_disjoint=False,recipient_ids=None,models_override=None,profile_settings=None,profile_metadata=None):
+             data=None,training=None,bootstrap_draws=None,recipient_disjoint=False,recipient_ids=None,models_override=None,profile_settings=None,profile_metadata=None,training_reference=None,retain_draws=False):
     data=data or data_context();p=policy();cutoff=event.effective_date
     event_details=getattr(event,'details',{})
     analysis_unit=event_details.get('analysis_unit','event')
@@ -49,6 +49,8 @@ def forecast(site,event,metric='downlink_traffic_gb',scope='tier1',method='pair_
         held={q['recipient_site_id'] for q in queries}|{query_head['event_site_id']}
         source=[r for r in source if r['recipient_site_id'] not in held and r['event_site_id'] not in held]
     ranges,reference=({}, {'kind':'explicit_training_fold_reference'}) if models_override is not None else pair_reference(cutoff.isoformat(),analysis_unit=analysis_unit) if training is None else (fit_ranges(source,PAIR_NUMERIC),{'kind':'explicit_training_fold_reference'})
+    if training_reference is not None:
+        ranges,reference=training_reference
     models=models_override or training_models(source,cutoff.isoformat(),query_head['event_site_id'],metric,ranges)
     rank_config={**DEFAULT,**({'selected_features':profile_settings['prediction_features'],'weighting_mode':profile_settings['weighting_mode'],'minimum_available_weight_share':profile_settings['minimum_available_weight_share'],'allow_filter_relaxation':profile_settings['allow_filter_relaxation']} if profile_settings else {})}
     predictions=[];draw_count=bootstrap_draws or p['bootstrap_draws']
@@ -154,7 +156,8 @@ def forecast(site,event,metric='downlink_traffic_gb',scope='tier1',method='pair_
             'supported_recipients':sum(v is not None for v in values),'eligible_recipients':len(values)})
     for row in predictions:
         for point in row['points']:
-            del point['_draws']
+            if not retain_draws:
+                del point['_draws']
     manifest=Path(settings.BASE_DIR)/'data/calibration'/('episode_recipient_cases.manifest.json' if analysis_unit=='episode' else 'event_recipient_cases.manifest.json')
     snapshot=json.loads(manifest.read_text(encoding='utf-8')) if manifest.exists() else None
     actions=other_site_actions([e for e in data.events if getattr(e,'event_key',None) not in event_details.get('raw_event_keys',[])],context['canonical_site_id'],event.event_key,cutoff)

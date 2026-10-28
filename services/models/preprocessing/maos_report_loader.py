@@ -25,6 +25,8 @@ class MAOSReportLoader:
         'L.Thrp.bits.DL(bit)',
         'L.ChMeas.PRB.DL.Used.Avg',
         'L.Traffic.ActiveUser.Avg',
+        'FT_AVERAGE NUMBER OF UE QUEUED DL',
+        'FT_AVERAGE NUMBER OF UE QUEUED UL',
         'L.Cell.Unavail.Dur.Sys(s)',
         'L.ChMeas.PRB.DL.Avail',
         'L.Thrp.Time.DL.RmvLastTTI(ms)',
@@ -52,9 +54,11 @@ class MAOSReportLoader:
         cell_ids = dict(
             Cell.objects.values_list('cell_name', 'pk')
         )
-        usecols = self.REQUIRED_COLUMNS | self.COUNTER_COLUMNS
+        from services.data_scope import scope_policy,filter_maos_chunk
+        scope=scope_policy()
+        usecols = self.REQUIRED_COLUMNS | self.COUNTER_COLUMNS | {'Frequency band','eNodeB Name','Cell FDD TDD Indication'}
         stats = {'rows_read': 0, 'rows_submitted': 0, 'unmatched_cells': 0, 'invalid_dates': 0,
-                 'available_counters': [], 'missing_counters': []}
+                 'available_counters': [], 'missing_counters': [],'excluded_scope_rows':0}
 
         for chunk in pd.read_csv(
             self.csv_path,
@@ -66,6 +70,8 @@ class MAOSReportLoader:
             chunk.columns = chunk.columns.str.strip()
             stats['available_counters'] = sorted(set(chunk.columns) & self.COUNTER_COLUMNS)
             stats['rows_read'] += len(chunk)
+            chunk,excluded=filter_maos_chunk(chunk,scope)
+            stats['excluded_scope_rows']+=excluded
             chunk['month_date'] = pd.to_datetime(
                 chunk['Date'].astype(str).str.strip(), format='%m-%Y', errors='coerce'
             ).dt.date
@@ -128,6 +134,8 @@ class MAOSReportLoader:
                     prb_util_ul_pct=None,
                     rrc_conn_avg=None,
                     active_users_avg=number(values, 'L.Traffic.ActiveUser.Avg'),
+                    queued_users_dl=nonnegative('FT_AVERAGE NUMBER OF UE QUEUED DL'),
+                    queued_users_ul=nonnegative('FT_AVERAGE NUMBER OF UE QUEUED UL'),
                     border_user_avg=nonnegative('L.Traffic.User.BorderUE.Avg'),
                     border_user_max=nonnegative('L.Traffic.User.BorderUE.Max'),
                     lowlatency_user_avg=nonnegative('L.Traffic.User.LowLatency.Avg'),
@@ -161,6 +169,7 @@ class MAOSReportLoader:
                         'dl_packet_delay_ms', 'cell_unavail_duration_s', 'observation_duration_s',
                         'cell_availability_pct', 'cqi_weighted_sum', 'cqi_sample_count',
                         'border_user_avg', 'border_user_max', 'lowlatency_user_avg',
+                        'queued_users_dl', 'queued_users_ul',
                     ],
                     unique_fields=['cell', 'month_date'],
                 )
@@ -170,8 +179,45 @@ class MAOSReportLoader:
 
         return stats
 
+    def import_queued_users(self, progress=None):
+        """Refresh only queued-user columns on already imported cell-month rows."""
+        from services.data_scope import scope_policy, filter_maos_chunk
+        columns={'FT_AVERAGE NUMBER OF UE QUEUED DL':'queued_users_dl',
+                 'FT_AVERAGE NUMBER OF UE QUEUED UL':'queued_users_ul'}
+        cell_ids=dict(Cell.objects.values_list('cell_name','pk'))
+        allowed=self.REQUIRED_COLUMNS | set(columns) | {'Frequency band','eNodeB Name','Cell FDD TDD Indication'}
+        result={'read':0,'matched':0,'excluded':0,'available_columns':[]}
+        policy=scope_policy()
+        for chunk in pd.read_csv(self.csv_path,skiprows=self.REPORT_HEADER_ROW,
+                usecols=lambda key:key.strip() in allowed,chunksize=self.CHUNK_SIZE,low_memory=False):
+            chunk.columns=chunk.columns.str.strip()
+            result['available_columns']=sorted(set(columns)&set(chunk.columns))
+            result['read']+=len(chunk)
+            chunk,excluded=filter_maos_chunk(chunk,policy);result['excluded']+=excluded
+            chunk['month_date']=pd.to_datetime(chunk['Date'].astype(str).str.strip(),format='%m-%Y',errors='coerce').dt.date
+            chunk['cell_pk']=chunk['Cell Name'].astype(str).str.strip().map(cell_ids)
+            chunk=chunk.dropna(subset=['month_date','cell_pk'])
+            for name in columns:
+                chunk[name]=pd.to_numeric(chunk[name],errors='coerce') if name in chunk else float('nan')
+            records=[]
+            for row in chunk.itertuples(index=False,name=None):
+                values=dict(zip(chunk.columns,row))
+                def valid(name):
+                    value=values[name]
+                    return float(value) if pd.notna(value) and math.isfinite(float(value)) and value>=0 else None
+                records.append((valid('FT_AVERAGE NUMBER OF UE QUEUED DL'),valid('FT_AVERAGE NUMBER OF UE QUEUED UL'),
+                    int(values['cell_pk']),values['month_date'].isoformat()))
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.executemany('UPDATE maos_monthly_kpi SET queued_users_dl=%s, queued_users_ul=%s WHERE cell_id=%s AND month_date=%s',records)
+                result['matched']+=cursor.rowcount
+            if progress:
+                progress(result.copy())
+        return result
+
     def import_user_counters(self):
         """Update only new user counters and their denominator in linked rows."""
+        from services.data_scope import scope_policy,filter_maos_chunk
+        scope=scope_policy()
         columns = {
             'L.Traffic.User.BorderUE.Avg':'border_user_avg',
             'L.Traffic.User.BorderUE.Max':'border_user_max',
@@ -182,12 +228,14 @@ class MAOSReportLoader:
         stats = {'rows_read':0,'rows_updated':0,'unmatched_cells':0,'invalid_dates':0,
                  'available_counters':[], 'missing_counters':[],
                  'nonzero_values':dict.fromkeys(columns,0),'missing_values':dict.fromkeys(columns,0)}
-        allowed = self.REQUIRED_COLUMNS | set(columns)
+        allowed = self.REQUIRED_COLUMNS | set(columns) | {'Frequency band','eNodeB Name','Cell FDD TDD Indication'}
         sql = 'UPDATE maos_monthly_kpi SET '+', '.join(f'{field}=%s' for field in columns.values())+' WHERE cell_id=%s AND month_date=%s'
         for chunk in pd.read_csv(self.csv_path,skiprows=self.REPORT_HEADER_ROW,
                 usecols=lambda key:key.strip() in allowed,chunksize=self.CHUNK_SIZE,low_memory=False):
             chunk.columns = chunk.columns.str.strip()
             stats['rows_read'] += len(chunk)
+            chunk,excluded=filter_maos_chunk(chunk,scope)
+            stats['excluded_scope_rows']=stats.get('excluded_scope_rows',0)+excluded
             stats['available_counters'] = sorted(set(columns)&set(chunk.columns))
             chunk['month'] = pd.to_datetime(chunk['Date'].astype(str).str.strip(),format='%m-%Y',errors='coerce').dt.date
             chunk['cell_pk'] = chunk['Cell Name'].astype(str).str.strip().map(cell_ids)

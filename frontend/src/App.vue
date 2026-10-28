@@ -7,6 +7,7 @@
 
     <nav class="app-navigation" aria-label="Main pages">
       <button type="button" :aria-current="activePage === 'map' ? 'page' : null" @click="activePage = 'map'">Site map</button>
+      <button type="button" :aria-current="activePage === 'candidate' ? 'page' : null" @click="activePage = 'candidate'">Candidate site</button>
       <button type="button" :aria-current="activePage === 'clusters' ? 'page' : null" @click="activePage = 'clusters'">Cluster analysis</button>
       <button type="button" :aria-current="activePage === 'similarity' ? 'page' : null" @click="activePage = 'similarity'">Similarity</button>
       <button type="button" :aria-current="activePage === 'explore' ? 'page' : null" @click="activePage = 'explore'">Data Explorer</button>
@@ -16,7 +17,9 @@
     </nav>
     
     <main class="app-main">
-      <ClusterMapView v-if="activePage === 'map'" :focus-sites="mapFocus" @clear-focus="mapFocus = null" />
+      <SimilarityMapComparison v-if="activePage === 'map' && mapFocus" :focus="mapFocus" @close="mapFocus=null" @back="activePage='similarity'" />
+      <ClusterMapView v-else-if="activePage === 'map'" />
+      <CandidatePlanningView v-else-if="activePage === 'candidate'" />
       <ClusterAnalysisView v-else-if="activePage === 'clusters'" />
       <DataExplorerView v-else-if="activePage === 'explore'" />
       <FeatureSyncView v-else-if="activePage === 'sync'" />
@@ -36,10 +39,14 @@ import FeatureSyncView from './components/FeatureSyncView.vue';
 import CBRPredictionView from './components/CBRPredictionView.vue';
 import DataExplorerView from './components/DataExplorerView.vue';
 import AnalysisConfigurationView from './components/AnalysisConfigurationView.vue';
+import SimilarityMapComparison from './components/SimilarityMapComparison.vue';
+import CandidatePlanningView from './components/CandidatePlanningView.vue';
 
 export default {
   name: 'App',
   components: {
+    SimilarityMapComparison,
+    CandidatePlanningView,
     AnalysisConfigurationView,
     ClusterMapView,
     ClusterAnalysisView,

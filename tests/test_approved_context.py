@@ -86,6 +86,34 @@ class ApprovedContextTests(TestCase):
         self.assertIsNone(cluster_prelaunch_values(a,DEC,{})['avg_users'])
         self.assertIsNone(cluster_prelaunch_values(a,date(2023,11,1),{})['avg_users'])
 
+    def test_virtual_previous_month_uses_eligible_sample_and_per_cell_means(self):
+        origin=self.site('origin',cluster=-1)
+        north=self.site('north',35.01,cluster=-1)
+        south=self.site('south',34.99,cluster=-1)
+        own=self.cell(origin,'own')
+        a=self.cell(north,'north')
+        b=self.cell(south,'south')
+        MAOSMonthlyKPI.objects.create(cell=own,month_date=NOV,thrp_bits_dl=800e9,active_users_avg=999)
+        for cell,users,used,avail,cqisum,cqicount,throughput,delay,queued in [
+            (a,3,10,25,10,10,10,2,1),(b,7,40,75,90,10,30,8,2)]:
+            MAOSMonthlyKPI.objects.create(cell=cell,month_date=NOV,thrp_bits_dl=8e9,
+                active_users_avg=users,prb_dl_used_avg=used,prb_dl_available=avail,
+                cqi_weighted_sum=cqisum,cqi_sample_count=cqicount,
+                dl_throughput_kbps=throughput,dl_packet_delay_ms=delay,
+                queued_users_dl=queued,queued_users_ul=queued*2)
+        values=cluster_prelaunch_values(origin,DEC,{})
+        self.assertEqual(values['avg_users'],10)
+        self.assertEqual(values['avg_traffic_dl_gb'],2)
+        self.assertEqual(values['avg_prb_util_pct'],50)
+        self.assertEqual(values['cluster_capacity_prb'],100)
+        self.assertEqual(values['avg_cqi'],5)
+        self.assertEqual(values['cluster_pre_dl_throughput_kbps'],20)
+        self.assertEqual(values['cluster_pre_dl_packet_delay_ms'],5)
+        self.assertEqual(values['cluster_pre_median_dl_packet_delay_ms'],5)
+        self.assertEqual(values['cluster_pre_queued_users_dl'],3)
+        self.assertEqual(values['cluster_pre_queued_users_ul'],6)
+        self.assertEqual(values['cluster_prelaunch_support']['member_sites'],2)
+
     def test_static_absolute_elevation_adds_ground_building_and_mast_once(self):
         a=self.site('a')
         b=self.site('b',35.005)

@@ -84,6 +84,7 @@ class FeatureExtractionPipeline:
         site_ids: Optional[List[str]] = None,
         skip_existing: bool = True,
         progress_callback: Optional[Callable[[Dict], None]] = None,
+        reuse_static: bool = False,
     ) -> Dict[str, int]:
         """
         Extract all features for sites and save to database.
@@ -174,44 +175,53 @@ class FeatureExtractionPipeline:
                 
                 with transaction.atomic():
                     configuration_values = configuration_feature_values(site)
-                    try:
-                        road_values = save_site_roads(site, self.road_extractor)
-                    except Exception:
-                        stats['road_failures'] += 1
-                        raise
-                    # 1. Geometric features (DEM-based)
-                    geo_result = self.geometric_extractor.extract_features(
-                        site.site_id, site.latitude, site.longitude,
-                        antenna_height_m=configuration_values['antenna_height_m'],
-                    )
-                    if not geo_result.success:
-                        stats['geometric_failures'] += 1
-                    
-                    GeometricFeatures.objects.update_or_create(
-                        site=site,
-                        defaults=self.geometric_extractor.to_dict(geo_result)
-                    )
-                    
-                    # 2. Clutter features (land cover, buildings)
-                    clutter_result = self.clutter_extractor.extract_features(
-                        site.site_id, site.latitude, site.longitude
-                    )
-                    if not clutter_result.success:
-                        stats['clutter_failures'] += 1
-                    
-                    ClutterFeatures.objects.update_or_create(
-                        site=site,
-                        defaults=self.clutter_extractor.to_dict(clutter_result)
-                    )
-                    
-                    stored_clutter = self.clutter_extractor.to_dict(clutter_result)
-                    ground = getattr(geo_result,'elevation_m',None)
-                    building = stored_clutter.get('avg_building_height_m')
-                    GeometricFeatures.objects.filter(site=site).update(
-                        z_antenna_m=ground+building+configuration_values['antenna_height_m']
-                            if ground is not None and building is not None else None,
-                        terrain_relief_class=terrain_relief(getattr(geo_result,'slope_deg',None)),
-                    )
+                    static_ready = reuse_static and hasattr(site, 'road_features') and hasattr(site, 'geometric_features') and hasattr(site, 'clutter_features')
+                    if static_ready:
+                        road_values = {'road_km_total': site.road_features.road_km_total}
+                        old_height = getattr(getattr(site, 'config_features', None), 'antenna_height_m', None)
+                        old_z = site.geometric_features.z_antenna_m
+                        new_height = configuration_values['antenna_height_m']
+                        if old_z is not None and old_height is not None and new_height is not None:
+                            GeometricFeatures.objects.filter(site=site).update(z_antenna_m=old_z-old_height+new_height)
+                    else:
+                        try:
+                            road_values = save_site_roads(site, self.road_extractor)
+                        except Exception:
+                            stats['road_failures'] += 1
+                            raise
+                        # 1. Geometric features (DEM-based)
+                        geo_result = self.geometric_extractor.extract_features(
+                            site.site_id, site.latitude, site.longitude,
+                            antenna_height_m=configuration_values['antenna_height_m'],
+                        )
+                        if not geo_result.success:
+                            stats['geometric_failures'] += 1
+                        
+                        GeometricFeatures.objects.update_or_create(
+                            site=site,
+                            defaults=self.geometric_extractor.to_dict(geo_result)
+                        )
+                        
+                        # 2. Clutter features (land cover, buildings)
+                        clutter_result = self.clutter_extractor.extract_features(
+                            site.site_id, site.latitude, site.longitude
+                        )
+                        if not clutter_result.success:
+                            stats['clutter_failures'] += 1
+                        
+                        ClutterFeatures.objects.update_or_create(
+                            site=site,
+                            defaults=self.clutter_extractor.to_dict(clutter_result)
+                        )
+                        
+                        stored_clutter = self.clutter_extractor.to_dict(clutter_result)
+                        ground = getattr(geo_result,'elevation_m',None)
+                        building = stored_clutter.get('avg_building_height_m')
+                        GeometricFeatures.objects.filter(site=site).update(
+                            z_antenna_m=ground+building+configuration_values['antenna_height_m']
+                                if ground is not None and building is not None else None,
+                            terrain_relief_class=terrain_relief(getattr(geo_result,'slope_deg',None)),
+                        )
 
                     # 3. Spatial features (neighbor analysis)
                     spatial_result = spatial_extractor.extract_features(site.site_id)
@@ -248,6 +258,9 @@ class FeatureExtractionPipeline:
                         if maos_values:
                             KPIFeatures.objects.update_or_create(site=site, defaults=maos_values)
                             stats['maos_features'] += 1
+                        elif reuse_static:
+                            # A former launch may disappear after cell-scope changes.
+                            KPIFeatures.objects.filter(site=site).delete()
 
                     ConfigurationFeatures.objects.update_or_create(
                         site=site, defaults=configuration_values

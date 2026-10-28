@@ -21,6 +21,7 @@ from .feature_sync import FeatureSyncJob
 from .network_event import RadioNetworkEvent
 from .analysis_profile import AnalysisProfile,AnalysisProfileDefault,AnalysisProfileRevision,AnalysisSetup
 from .analysis_episode import AnalysisEpisode,AnalysisEpisodeMember
+from .candidate_scenario import CandidateScenario
 
 __all__ = [
     'Site',

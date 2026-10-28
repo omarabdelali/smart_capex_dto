@@ -2,7 +2,7 @@
 from django.db.models import Max
 
 from core.models import MAOSMonthlyKPI, Site
-from services.models.similarity import build_site_similarity_vector, rank_similar_cases
+from services.models.similarity import build_site_similarity_vector
 from services.models.similarity.gower_distance import GowerDistance
 from services.models.similarity.historical import month_offset
 from services.models.features.road_loader import ROAD_FIELDS, ROAD_LABELS
@@ -13,7 +13,7 @@ from services.models.similarity.availability import feature_statuses
 
 
 from .context import candidate_context
-from .pca import prepare_pca, pca_options, rank_pca
+from .pca import prepare_pca, pca_options
 from .catalog import DISPLAY_ONLY, PROFILE_FIELDS, SIMILARITY_FIELDS, OPTIONAL, CONTEXT_LABELS, POPULATION_LABELS
 
 
@@ -80,46 +80,22 @@ def search_similarity(params, actor=None):
     query_vector['_allow_filter_relaxation']=relaxation=='true'
 
     requested_features = params.get('features')
-    if requested_features is None:
-        selected_features = [
-            field for field in SIMILARITY_FIELDS
-            if field not in OPTIONAL and not GowerDistance._is_missing(query_vector.get(field))
-        ]
-    else:
-        selected_features = list(dict.fromkeys(
-            field.strip() for field in requested_features.split(',') if field.strip()
-        ))
-        invalid_features = sorted(set(selected_features) - set(SIMILARITY_FIELDS))
-        if invalid_features and representation == 'original':
-            return result({
-                'error': 'Unknown similarity feature(s).',
-                'invalid_features': invalid_features,
-            }, status=400)
-        if not selected_features:
-            return result(
-                {'error': 'Select at least one available similarity feature.'},
-                status=400,
-            )
-
+    requested = None if requested_features is None else [
+        field.strip() for field in requested_features.split(',') if field.strip()
+    ]
     candidates, candidate_vectors, all_candidate_count = candidate_context(query_site, query_vector, current_as_of)
-    prepared = prepare_pca(query_vector, candidate_vectors,source_features=profile_settings['similarity_features'] if profile_settings else None,variance_target=profile_settings['pca_variance_target'] if profile_settings else None) if representation == 'pca' else None
-    if prepared is not None:
-        if not prepared['report']['available']:
-            return result({'error': prepared['report']['reason'], 'pca': prepared['report']}, status=422)
-        expected_fit = params.get('pca_fit_id')
-        if expected_fit and expected_fit != prepared['report']['fit_id']:
-            return result({'error': 'Candidate data changed. Reload the PCA list before ranking.'}, status=409)
-        allowed = {c['key'] for c in prepared['report']['components']} | (set(GowerDistance.CATEGORICAL_FEATURES) - DISPLAY_ONLY) | set(ROAD_FIELDS)
-        if requested_features is None:
-            selected_features = [c['key'] for c in prepared['report']['components']] + [f for f in GowerDistance.CATEGORICAL_FEATURES if f not in DISPLAY_ONLY and (f in profile_settings['similarity_features'] if profile_settings else f not in OPTIONAL) and not GowerDistance._is_missing(query_vector.get(f))]
-            if profile_settings:
-                selected_features += [f for f in ROAD_FIELDS if f in profile_settings['similarity_features'] and f not in selected_features and not GowerDistance._is_missing(query_vector.get(f))]
-        invalid = set(selected_features) - allowed
-        if invalid:
-            return result({'error': 'Unknown PCA dimension(s).', 'invalid_features': sorted(invalid)}, status=400)
-    ranking = (rank_pca(query_vector, candidate_vectors, prepared, selected_features, k=limit, weighting_mode=weighting_mode,minimum_available_weight_share=minimum_share)
-        if prepared is not None else rank_similar_cases(
-        query_vector, candidate_vectors, k=limit, selected_features=selected_features, weighting_mode=weighting_mode,minimum_available_weight_share=minimum_share,strict_selection=bool(profile_settings)))
+    from .case_selector import rank_cases, CaseSelectionError
+    try:
+        selection = rank_cases(query_vector, candidate_vectors, selected_features=requested,
+            profile_settings=profile_settings, representation=representation, weighting_mode=weighting_mode,
+            minimum_available_weight_share=minimum_share, allow_filter_relaxation=relaxation=='true',
+            limit=limit, strict_selection=bool(profile_settings), expected_fit_id=params.get('pca_fit_id'))
+    except CaseSelectionError as error:
+        return result(error.payload,status=error.status)
+    query_vector=selection['query']
+    selected_features=selection['selected_features']
+    prepared=selection['prepared']
+    ranking=selection['ranking']
     candidate_by_id = {site.site_id: site for site in candidates}
 
     cases = []
@@ -274,9 +250,13 @@ def feature_availability(params, actor=None):
 
 
 def profile_parameters(params,actor,vector):
-    from services.analysis_profiles import resolve_profile
-    settings,metadata,error=resolve_profile(actor,'similarity',params,{
-        'event_type':vector.get('event_type'),'tier_scheme':vector.get('tier_scheme'),'technology':vector.get('_event_technologies') or vector.get('tech_added')})
+    from .case_selector import resolve_template,CaseSelectionError
+    try:
+        settings,metadata=resolve_template(actor,params,vector)
+        error=None
+    except CaseSelectionError as exc:
+        settings=metadata=None
+        error=(exc.payload,exc.status)
     values=params.copy()
     if settings:
         for key in ('representation','weighting_mode','minimum_available_weight_share'):

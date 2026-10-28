@@ -65,6 +65,10 @@ class CellPlanLoader:
         # Apply technology mapping
         if 'technology' in df.columns:
             df['technology'] = df['technology'].str.upper().map(tech_mapping).fillna(df['technology'])
+        from services.data_scope import filter_cellplan_frame
+        df,scope_result=filter_cellplan_frame(df)
+        if scope_result['excluded_rows']:
+            print(f"C-band physical-site exclusion: {scope_result}")
         
         # Group by site to aggregate cells
         site_groups = df.groupby(['site_id', 'site_name'])

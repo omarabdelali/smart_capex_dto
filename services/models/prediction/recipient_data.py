@@ -57,12 +57,21 @@ class RecipientData:
         bands=event_bands(event,self.by_cell);rows=[]
         prbs={(key,month):value for key,month,value in MAOSMonthlyKPI.objects.filter(
             cell__cell_id__in=event.details.get('cell_ids',[]),month_date=cutoff).values_list('cell__cell_id','month_date','prb_dl_available')}
-        for member in context['scopes'][scope]:
+        origin=context['canonical_site_id']
+        origin_member={'site_id':origin,'site_name':self.locations[origin]['site_name'],'distance_m':0.,'bearing_deg':None,'tier':'origin'}
+        if scope=='origin':
+            members=[origin_member]
+        elif scope in ('network','cluster_total'):
+            surrounding=context['scopes']['cluster'] if scope=='cluster_total' else context['scopes']['tier1']+context['scopes']['tier2']
+            members=[origin_member]+surrounding
+        else:
+            members=context['scopes'][scope]
+        for member in members:
             key=member['site_id'];observed_bands=self.bands(key,cutoff)
             features={name:prior_value(self.history.get(key,{}),cutoff,raw)[0] for name,raw in
                 [('recipient_pre_dl_gb','thrp_dl_gb'),('recipient_pre_active_users','active_users_avg'),
                  ('recipient_pre_prb_util_pct','prb_util_dl_pct'),('recipient_pre_cqi','cqi_avg')]}
-            rows.append({'analysis_unit':event.details.get('analysis_unit','event'),'action_signature':event.details.get('action_signature'),
+            rows.append({'recipient_role':'origin' if member['tier']=='origin' else 'neighbor','analysis_unit':event.details.get('analysis_unit','event'),'action_signature':event.details.get('action_signature'),
                 'event_key':event.event_key,'event_site_id':context['canonical_site_id'],'recipient_site_id':key,
                 'event_type':event.event_type,'event_date':cutoff.isoformat(),'tier_scheme':context['tier_scheme'],
                 'technology':'/'.join(sorted(event.details.get('technologies',[]))) or None,'bands':sorted(bands),

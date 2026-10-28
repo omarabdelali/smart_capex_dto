@@ -1,17 +1,18 @@
 <template>
-  <div class="cluster-map-container">
+  <div class="cluster-map-container" :class="{'comparison-map':compact}">
     <div class="mobile-map-toolbar">
       <button type="button" @click="toggleControls" :aria-expanded="controlsOpen">
         {{ controlsOpen ? 'Hide controls' : 'Map controls' }}
       </button>
       <strong>Smart CAPEX</strong>
+      <button v-if="compact && selectedSiteId" type="button" @click="detailsOpen=!detailsOpen">{{detailsOpen?'Hide details':'Site details'}}</button>
     </div>
     <!-- Map controls panel -->
     <div class="map-controls" :class="{ 'controls-open': controlsOpen }">
       <h3>Cluster Visualization</h3>
       <div v-if="focusSites" class="focus-banner">
         <strong>Similarity map</strong><span>{{ focusSites.siteIds.length }} sites shown</span>
-        <button type="button" @click="$emit('clear-focus')">Show all sites</button>
+        <button v-if="!compact" type="button" @click="$emit('clear-focus')">Show all sites</button>
       </div>
       
       <!-- Cluster statistics -->
@@ -63,8 +64,8 @@
       </div>
 
       <div class="event-filter">
-        <label for="event-type-select">Show event:</label>
-        <select id="event-type-select" v-model="selectedEventType" @change="updateMap">
+        <label :for="'event-type-select'+controlSuffix">Show event:</label>
+        <select :id="'event-type-select'+controlSuffix" v-model="selectedEventType" @change="updateMap">
           <option value="ALL">All events</option>
           <option value="SITE_ADDED">Site added</option>
           <option value="TECHNOLOGY_ADDED">Technology added</option>
@@ -76,9 +77,9 @@
       </div>
 
       <form class="site-search" @submit.prevent="searchSites">
-        <label for="site-search-input">Find a site or cell</label>
+        <label :for="'site-search-input'+controlSuffix">Find a site or cell</label>
         <div class="search-row">
-          <input id="site-search-input" v-model="siteSearch" type="search" placeholder="Name or partial name">
+          <input :id="'site-search-input'+controlSuffix" v-model="siteSearch" type="search" placeholder="Name or partial name">
           <button type="submit">Find</button>
         </div>
         <button v-if="searchQuery" type="button" class="clear-search" @click="clearSearch">Clear search</button>
@@ -126,8 +127,8 @@
 
       <!-- Cluster selector -->
       <div class="cluster-selector" v-if="stats && stats.clusters">
-        <label for="cluster-select">Filter by Cluster:</label>
-        <select id="cluster-select" v-model="selectedCluster" @change="updateMap">
+        <label :for="'cluster-select'+controlSuffix">Filter by Cluster:</label>
+        <select :id="'cluster-select'+controlSuffix" v-model="selectedCluster" @change="updateMap">
           <option :value="null">All Clusters</option>
           <option v-for="cluster in stats.clusters" :key="cluster.cluster_id" :value="cluster.cluster_id">
             Cluster {{ cluster.cluster_id }} ({{ cluster.site_count }} sites)
@@ -143,13 +144,13 @@
     <div v-if="selectedSiteId && linkStatus" class="map-link-status" role="status">{{ linkStatus }}</div>
 
     <!-- Leaflet map -->
-    <div id="cluster-map" ref="mapContainer">
+    <div :id="compact ? undefined : 'cluster-map'" class="leaflet-map" ref="mapContainer">
       <!-- Elevation legend overlay -->
       <ElevationLegend :visible="demLayers.showElevation" />
     </div>
 
     <aside
-      v-if="selectedSiteId"
+      v-if="selectedSiteId && (!compact || detailsOpen)"
       class="site-inspector"
       :style="{ '--inspector-width': `${inspectorWidth}px` }"
       aria-label="Selected site details"
@@ -169,7 +170,7 @@
       ></div>
       <div class="inspector-toolbar">
         <strong>Site details</strong>
-        <button type="button" aria-label="Close site details" @click="closeSiteDetails">Close</button>
+        <button type="button" aria-label="Close site details" @click="compact ? detailsOpen=false : closeSiteDetails()">Close</button>
       </div>
       <div class="inspector-content">
         <SiteFeaturePopup
@@ -185,7 +186,7 @@
 </template>
 
 <script>
-import { ref, onMounted, watch, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch, nextTick, getCurrentInstance } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import axios from 'axios';
@@ -194,7 +195,7 @@ import SiteFeaturePopup from './SiteFeaturePopup.vue';
 
 export default {
   name: 'ClusterMapView',
-  props: { focusSites: { type: Object, default: null } },
+  props: { focusSites: { type: Object, default: null }, compact:Boolean },
   emits: ['clear-focus'],
   
   components: {
@@ -203,6 +204,7 @@ export default {
   },
   
   setup(props) {
+    const controlSuffix=props.compact?'-'+getCurrentInstance().uid:'';
     const mapContainer = ref(null);
     const map = ref(null);
     const sitesLayer = ref(null);
@@ -215,7 +217,9 @@ export default {
     const siteSearch = ref('');
     const searchQuery = ref('');
     const searchResultCount = ref(null);
-    const controlsOpen = ref(typeof window === 'undefined' || window.innerWidth > 1024);
+    const controlsOpen = ref(!props.compact && (typeof window === 'undefined' || window.innerWidth > 1024));
+    const detailsOpen=ref(false);
+    let resizeObserver=null;
     const selectedSiteId = ref(null);
     const selectedSearchQuery = ref('');
     const inspectorWidth = ref(440);
@@ -270,7 +274,7 @@ export default {
      */
     const initMap = () => {
       // Center on Tunisia
-      map.value = L.map('cluster-map').setView([34.0, 9.0], 7);
+      map.value = L.map(mapContainer.value).setView([34.0, 9.0], 7);
 
       // Add OpenStreetMap tile layer
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -393,6 +397,7 @@ export default {
         if (request !== linkRequest || selectedSiteId.value !== String(selected.properties.site_id)) return;
         const origin = selected.geometry.coordinates;
         data.members.forEach(member => {
+          if(props.compact)L.circleMarker([member.latitude,member.longitude],{radius:4,color:member.tier==='tier1'?'#2563eb':'#ea580c',fillOpacity:.8}).bindTooltip(`${member.site_name} - ${data.labels[member.tier]}`).addTo(neighborLayer.value);
           L.polyline([[origin[1], origin[0]], [member.latitude, member.longitude]], {
             color: member.tier === 'tier1' ? '#2563eb' : '#ea580c',
             weight: 2, opacity: 0.75, dashArray: member.tier === 'tier1' ? null : '5, 5',
@@ -401,6 +406,7 @@ export default {
             .addTo(neighborLayer.value);
         });
         linkStatus.value = `Current ${data.link_scope === 'virtual_cluster' ? 'virtual members' : 'tier neighbors'} (${data.cutoff}): ${data.members.length}. Blue: ${data.labels.tier1}; orange dashed: ${data.labels.tier2}.`;
+        if(props.compact && map.value)map.value.fitBounds(L.latLngBounds([[origin[1],origin[0]],...data.members.map(m=>[m.latitude,m.longitude])]),{padding:[30,30],maxZoom:14});
       } catch (e) {
         if (request === linkRequest) linkStatus.value = 'Neighborhood links could not load. Select the site to retry.';
       }
@@ -453,6 +459,10 @@ export default {
 
     const toggleControls = () => {
       controlsOpen.value = !controlsOpen.value;
+      if(props.compact){
+        if(controlsOpen.value)detailsOpen.value=false;
+        return;
+      }
       if (controlsOpen.value && selectedSiteId.value && window.innerWidth <= 1024) {
         closeSiteDetails();
       }
@@ -701,8 +711,16 @@ export default {
      */
     onMounted(async () => {
       initMap();
+      resizeObserver=new ResizeObserver(refreshMapLayout);
+      resizeObserver.observe(mapContainer.value);
       await fetchStats();
       await updateMap();
+    });
+    onBeforeUnmount(()=>{
+      mapRequest++;linkRequest++;
+      resizeObserver?.disconnect();
+      if(mapResizeFrame!==null)cancelAnimationFrame(mapResizeFrame);
+      map.value?.remove();map.value=null;
     });
 
     /**
@@ -720,6 +738,7 @@ export default {
     }, { deep: true });
 
     return {
+      controlSuffix,detailsOpen,
       mapContainer,
       stats,
       loading,
@@ -926,7 +945,7 @@ export default {
   font-size: 14px;
 }
 
-#cluster-map {
+.leaflet-map {
   flex: 1;
   height: 100%;
   min-width: 0;
@@ -1058,7 +1077,7 @@ export default {
 
 @media (max-width: 1024px) {
   .cluster-map-container { display: block; }
-  #cluster-map { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .leaflet-map { position: absolute; inset: 0; width: 100%; height: 100%; }
   .mobile-map-toolbar {
     position: absolute;
     z-index: 1100;
@@ -1101,4 +1120,15 @@ export default {
   .cluster-selector { padding: 10px; }
   .inspector-toolbar { min-height: 44px; padding: 7px 12px; }
 }
+
+.comparison-map{position:relative;display:block}
+.comparison-map .leaflet-map{height:100%;width:100%}
+.comparison-map .mobile-map-toolbar{position:absolute;display:flex;top:8px;left:45px;right:8px;gap:6px;justify-content:flex-end;z-index:950;pointer-events:none}
+.comparison-map .mobile-map-toolbar strong{display:none}
+.comparison-map .mobile-map-toolbar button{pointer-events:auto;padding:7px;background:white;border:1px solid #94a3b8;border-radius:5px}
+.comparison-map .map-controls{display:none;position:absolute;top:48px;bottom:36px;left:8px;right:8px;z-index:980;width:auto;max-width:350px;padding:12px}
+.comparison-map .map-controls.controls-open{display:block}
+.comparison-map .site-inspector{position:absolute;inset:auto 0 0;width:100%;height:68%;z-index:990}
+.comparison-map .inspector-resize{display:none}
+.comparison-map .map-link-status{left:8px;right:8px;bottom:8px;max-width:none;font-size:10px}
 </style>

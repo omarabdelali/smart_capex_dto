@@ -6,6 +6,13 @@ from rest_framework.views import APIView
 from services.analysis_profiles import browser_actor
 from services.models.prediction.cbr_impact import build_cbr_impact_prediction
 from services.models.prediction.recipient_cbr import recipient_request
+from services.models.prediction.counterfactual_gains import gain_request
+
+
+class CounterfactualGainView(APIView):
+    def get(self,request):
+        payload,code=gain_request(request.query_params,browser_actor(request))
+        return Response(payload,status=code)
 
 
 class RecipientCBRView(APIView):

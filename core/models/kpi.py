@@ -71,6 +71,8 @@ class MAOSMonthlyKPI(BaseModel):
     # User metrics
     rrc_conn_avg = models.FloatField(null=True, blank=True, default=None, help_text="Unavailable as an average in current LTE report")
     active_users_avg = models.FloatField(null=True, blank=True, default=None)
+    queued_users_dl = models.FloatField(null=True, blank=True, default=None, help_text='FT_AVERAGE NUMBER OF UE QUEUED DL')
+    queued_users_ul = models.FloatField(null=True, blank=True, default=None, help_text='FT_AVERAGE NUMBER OF UE QUEUED UL')
     border_user_avg = models.FloatField(null=True, blank=True, default=None, help_text='L.Traffic.User.BorderUE.Avg')
     border_user_max = models.FloatField(null=True, blank=True, default=None, help_text='L.Traffic.User.BorderUE.Max')
     lowlatency_user_avg = models.FloatField(null=True, blank=True, default=None, help_text='L.Traffic.User.LowLatency.Avg')

@@ -259,8 +259,9 @@
         <!-- KPI and configuration features -->
         <div v-if="activeTab === 'network'" class="tab-pane">
           <section v-if="features.cluster_prelaunch" class="cluster-prelaunch-panel">
-            <h4>Cluster KPIs · month before event</h4>
-            <p class="cell-plan-note">{{ features.cluster_prelaunch.cluster_prelaunch_support.month }} · {{ features.cluster_prelaunch.cluster_prelaunch_support.reporting_sites }} / {{ features.cluster_prelaunch.cluster_prelaunch_support.member_sites }} reporting sites. Active users are summed across cells; ratios use summed components.</p>
+            <h4>{{ features.cluster_features?.cluster_id === -1 ? 'Virtual cluster KPIs' : 'Cluster KPIs' }} · month before event</h4>
+            <p class="cell-plan-note">{{ features.cluster_prelaunch.cluster_prelaunch_support.month }} · {{ features.cluster_prelaunch.cluster_prelaunch_support.reporting_sites }} / {{ features.cluster_prelaunch.cluster_prelaunch_support.member_sites }} reporting sites. {{ features.cluster_prelaunch.cluster_prelaunch_support.membership }}. Throughput and latency are averages of available cell values; PRB utilization and CQI are weighted by their counter components.</p>
+            <p class="cell-plan-note">{{ features.cluster_prelaunch.cluster_prelaunch_support.reporting_cells || 0 }} reporting cells; throughput: {{ features.cluster_prelaunch.cluster_prelaunch_support.throughput_cells }}, delay: {{ features.cluster_prelaunch.cluster_prelaunch_support.delay_cells }} valid cell values.</p>
             <div class="info-grid">
               <div v-for="metric in clusterBaselineMetrics" :key="metric.key" class="info-item">
                 <span class="label">{{ metric.label }}</span>
@@ -288,7 +289,7 @@
           </div>
           <p v-else class="no-data">No configuration features stored for this site</p>
 
-          <h4>Static cluster context · KPI month before event</h4>
+          <h4>{{ features.cluster_features?.cluster_id === -1 ? 'Virtual cluster context' : 'Static cluster context' }} · KPI month before event</h4>
           <div v-if="features.cluster_features" class="info-grid">
             <div v-for="(value, key) in features.cluster_features" :key="key" class="info-item">
               <span class="label">{{ formatLabel(key) }}:</span>
@@ -441,6 +442,7 @@ export default {
       {key:'avg_traffic_dl_gb',label:'Cluster DL traffic',unit:'GB/month'},
       {key:'avg_prb_util_pct',label:'Cluster DL PRB utilization',unit:'%'},
       {key:'avg_cqi',label:'Cluster weighted CQI',unit:''},
+      {key:'cluster_capacity_prb',label:'Cluster capacity (configured PRB)',unit:'PRBs'},
       {key:'cluster_pre_dl_throughput_kbps',label:'Cluster DL throughput',unit:'kbit/s'},
       {key:'cluster_pre_dl_packet_delay_ms',label:'Cluster latency',unit:'ms'},
       {key:'cluster_pre_cell_availability_pct',label:'Cluster availability',unit:'%'}
